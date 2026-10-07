@@ -2343,6 +2343,69 @@ console.log(
     );
     await page.close();
   }
+
+  // 5. change password: the server SAVES it but the answer is lost. The page must not claim it failed: it checks
+  //    by signing in with the new password (safe to repeat), and keeps the browser signed in.
+  {
+    const NEW_PW = 'Lost-answer-test-pass-91';
+    const page = await newPage(1280, false);
+    let changes = 0;
+    await open(page, '/admin/');
+    await page.type('form.login input[type=text]', LOGIN);
+    await page.type('form.login input[type=password]', PASSWORD);
+    await page.click('form.login button[type=submit]');
+    await page.waitForSelector('.topbar');
+    await page.goto(`${SITE}/admin/#settings`);
+    await page.waitForSelector('fieldset.section input[type=password]');
+    await page.setRequestInterception(true);
+    page.on('request', async (r) => {
+      if (isApi(r) && actionOf(r) === 'changePassword') {
+        changes++;
+        await fetch(API, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: r.postData(),
+        });
+        return r.respond({ status: 404, contentType: 'text/html', body: GOOGLE_404 });
+      }
+      r.continue().catch(() => {});
+    });
+    const [cur, next, again] = await page.$$('fieldset.section input[type=password]');
+    await cur.type(PASSWORD);
+    await next.type(NEW_PW);
+    await again.type(NEW_PW);
+    await page.click('fieldset.section form.inline-form button[type=submit]');
+    await page.waitForFunction(
+      () =>
+        [...document.querySelectorAll('.toast')].some((t) =>
+          /Password changed.*saved/.test(t.textContent),
+        ),
+      { timeout: 20000 },
+    );
+    check(
+      changes === 1,
+      'a lost answer to "change password" is not repeated blindly, and the page confirms the outcome itself',
+      `change requests: ${changes}`,
+    );
+    check(
+      (await api('login', { email: LOGIN, password: PASSWORD })).ok === false &&
+        (await api('login', { email: LOGIN, password: NEW_PW })).ok,
+      '...and it says "saved" only because signing in with the new password really works',
+    );
+    await page.goto(`${SITE}/admin/#enquiries`);
+    await page.waitForSelector('table.table-enq tbody tr', { timeout: 15000 });
+    ok('the browser stays signed in after a confirmed change');
+    // put the default back for the rest of the run
+    const tok = (await api('login', { email: LOGIN, password: NEW_PW })).token;
+    const back = await api('changePassword', {
+      token: tok,
+      old_password: NEW_PW,
+      new_password: PASSWORD,
+    });
+    check(back.ok, 'the default password is restored for the rest of the run');
+    token = back.token;
+    await page.close();
+  }
 }
 
 /* ============================================================ security edge cases */

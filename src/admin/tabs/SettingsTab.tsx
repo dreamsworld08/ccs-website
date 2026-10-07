@@ -115,6 +115,20 @@ function ChangePassword() {
   const [again, setAgain] = useState('');
   const [busy, setBusy] = useState(false);
 
+  /** This browser carries on with a fresh session; every other session is now signed out. */
+  function finish(token: string, expiresIn: number, confirmedBySignIn = false) {
+    const session = loadSession();
+    if (session) saveSession({ ...session, token, expiresAt: Date.now() + expiresIn * 1000 });
+    toast(
+      `Password changed${confirmedBySignIn ? ' (the server was slow to confirm, but it is saved)' : ''}. Anyone else signed in with the old password has been signed out.`,
+      'ok',
+      8000,
+    );
+    setOldPw('');
+    setNewPw('');
+    setAgain('');
+  }
+
   async function submit(e: Event) {
     e.preventDefault();
     if (newPw !== again) return void toast('The two new passwords do not match.', 'error');
@@ -123,26 +137,36 @@ function ChangePassword() {
       old_password: oldPw,
       new_password: newPw,
     });
-    setBusy(false);
     if (res.ok) {
-      // This browser carries on with a fresh session; every other session is now signed out.
+      setBusy(false);
+      return finish(res.token, res.expires_in);
+    }
+    if (res.code === 'network' || res.code === 'bad_response') {
+      // Google did not deliver the answer, so we do not know whether the change was saved (often it was).
+      // Signing in with the NEW password is safe to repeat and tells us.
       const session = loadSession();
-      if (session)
-        saveSession({
-          ...session,
-          token: res.token,
-          expiresAt: Date.now() + res.expires_in * 1000,
-        });
-      toast(
-        'Password changed. Anyone else signed in with the old password has been signed out.',
-        'ok',
-        7000,
+      const check = session
+        ? await call<{ token: string; expires_in: number }>('login', {
+            email: session.email,
+            password: newPw,
+          })
+        : null;
+      setBusy(false);
+      if (check?.ok) return finish(check.token, check.expires_in, true);
+      if (check && check.code !== 'network' && check.code !== 'bad_response')
+        return void toast(
+          'The server did not confirm the change and the new password does not work, so it was not saved. Your old password still works. Please try again.',
+          'error',
+          10000,
+        );
+      return void toast(
+        'We could not confirm whether the password was changed, because the server is not answering. Wait a minute, then sign in with your NEW password. If that does not work, your old password still does.',
+        'error',
+        14000,
       );
-      setOldPw('');
-      setNewPw('');
-      setAgain('');
-    } else if (res.code !== 'auth')
-      toast(res.error || 'Could not change the password.', 'error', 7000);
+    }
+    setBusy(false);
+    if (res.code !== 'auth') toast(res.error || 'Could not change the password.', 'error', 7000);
   }
   return (
     <fieldset class="section">

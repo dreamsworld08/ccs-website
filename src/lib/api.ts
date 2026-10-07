@@ -79,7 +79,14 @@ export async function callBackend<T = Record<string, unknown>>(
   params: Params = {},
   timeoutMs = 25000,
 ): Promise<ApiResult<T>> {
-  if (!REPEATABLE.has(action)) return attempt<T>(action, params, timeoutMs);
+  if (!REPEATABLE.has(action)) {
+    const result = await attempt<T>(action, params, timeoutMs);
+    // For a write, "no answer" does not mean "not done": say so, so nobody retries blindly or assumes it failed.
+    if (result.code === 'network')
+      result.error =
+        'The server did not answer in time, so we cannot tell whether this was saved. Check before trying again.';
+    return result;
+  }
   const attempts = 3;
   const each = SLOW_START.has(action) ? Math.min(timeoutMs, 15000) : timeoutMs;
   let result = await attempt<T>(action, params, each);
