@@ -4,9 +4,13 @@
   "email": "info@chandigarhcivilservices.in",
   "address": "SCO 123, 2nd Floor, Sector 34-A, Chandigarh 160022",
   "map_url": "https://maps.google.com/?q=Sector+34A+Chandigarh",
-  "youtube_url": "https://www.youtube.com/",
+  "youtube_url": "https://www.youtube.com/@ccsacademy7900",
   "instagram_url": "https://www.instagram.com/chandigarh_civil_services/",
   "telegram_url": "https://t.me/",
-  "attempt_years": ["2027", "2028", "2029"],
+  "attempt_years": [
+    "2027",
+    "2028",
+    "2029"
+  ],
   "show_free_tests": false
 }
