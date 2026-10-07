@@ -9,7 +9,7 @@ import {
   type Session,
 } from './api';
 import { COURSES, EXAM_UPDATES, REELS, RESOURCES, RESULTS, TEACHERS, TESTS } from './schemas';
-import { Toasts, toast } from './ui';
+import { Toasts } from './ui';
 import EnquiriesTab from './tabs/EnquiriesTab';
 import ContentTab from './tabs/ContentTab';
 import HomeTab from './tabs/HomeTab';
@@ -45,13 +45,10 @@ export default function App() {
     const ms = session.expiresAt - Date.now();
     const t = setTimeout(logout, Math.max(0, ms));
     const onExpired = () => setSession(null);
-    const onMustChange = () => setSession((s) => (s ? { ...s, mustChange: true } : s));
     window.addEventListener('ccs:session-expired', onExpired);
-    window.addEventListener('ccs:must-change', onMustChange);
     return () => {
       clearTimeout(t);
       window.removeEventListener('ccs:session-expired', onExpired);
-      window.removeEventListener('ccs:must-change', onMustChange);
     };
   }, [session]);
 
@@ -77,24 +74,6 @@ export default function App() {
 
   if (framed)
     return <p style={{ padding: '24px' }}>This page cannot be displayed inside another page.</p>;
-
-  if (session?.mustChange) {
-    return (
-      <>
-        <ForcePasswordChange
-          name={session.name}
-          onDone={() => {
-            const s = { ...session, mustChange: false };
-            saveSession(s);
-            setSession(s);
-            toast('Password changed. Welcome.', 'ok');
-          }}
-          onLogout={logout}
-        />
-        <Toasts />
-      </>
-    );
-  }
 
   if (!session) {
     return (
@@ -162,7 +141,7 @@ export default function App() {
         {active === 'exam-updates' && <ContentTab def={EXAM_UPDATES} />}
         {active === 'tests' && showTests && <ContentTab def={TESTS} />}
         {active === 'landing-pages' && <LandingPagesTab />}
-        {active === 'settings' && <SettingsTab me={session} onSettings={setSettings} />}
+        {active === 'settings' && <SettingsTab onSettings={setSettings} />}
       </main>
       <Toasts />
     </div>
@@ -184,7 +163,6 @@ function Login({ onLogin }: { onLogin: (s: Session) => void }) {
       name: string;
       email: string;
       expires_in: number;
-      must_change?: boolean;
     }>('login', { email, password });
     setBusy(false);
     if (!res.ok) {
@@ -200,7 +178,6 @@ function Login({ onLogin }: { onLogin: (s: Session) => void }) {
       name: res.name,
       email: res.email,
       expiresAt: Date.now() + res.expires_in * 1000,
-      mustChange: Boolean(res.must_change),
     };
     saveSession(s);
     onLogin(s);
@@ -251,102 +228,6 @@ function Login({ onLogin }: { onLogin: (s: Session) => void }) {
         <p class="help">
           Staff only. Content saved here goes live on the website in about 2 minutes.
         </p>
-      </form>
-    </div>
-  );
-}
-
-/** Shown after signing in with a temporary or default password: nothing else works until it is replaced. */
-function ForcePasswordChange({
-  name,
-  onDone,
-  onLogout,
-}: {
-  name: string;
-  onDone: () => void;
-  onLogout: () => void;
-}) {
-  const [oldPw, setOldPw] = useState('');
-  const [newPw, setNewPw] = useState('');
-  const [again, setAgain] = useState('');
-  const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
-
-  async function submit(e: Event) {
-    e.preventDefault();
-    setError('');
-    if (newPw !== again) return void setError('The two new passwords do not match.');
-    setBusy(true);
-    const res = await call('changePassword', { old_password: oldPw, new_password: newPw });
-    setBusy(false);
-    if (res.ok) onDone();
-    else if (res.code !== 'auth') setError(res.error ?? 'Could not change the password.');
-  }
-
-  return (
-    <div class="login-wrap">
-      <form class="login" onSubmit={submit}>
-        <img
-          class="login-logo"
-          src={`${siteBase()}/brand/logo-full.webp`}
-          alt="Chandigarh Civil Services"
-          width="120"
-          height="120"
-        />
-        <h1>Choose a new password</h1>
-        <p class="help">
-          Hello {name}. For security you must replace the temporary password before you can
-          continue.
-        </p>
-        <label>
-          Current (temporary) password
-          <input
-            type="password"
-            value={oldPw}
-            autocomplete="current-password"
-            required
-            autoFocus
-            onInput={(e) => setOldPw((e.target as HTMLInputElement).value)}
-          />
-        </label>
-        <label>
-          New password
-          <input
-            type="password"
-            value={newPw}
-            autocomplete="new-password"
-            minLength={8}
-            maxLength={100}
-            required
-            onInput={(e) => setNewPw((e.target as HTMLInputElement).value)}
-          />
-        </label>
-        <label>
-          New password again
-          <input
-            type="password"
-            value={again}
-            autocomplete="new-password"
-            minLength={8}
-            maxLength={100}
-            required
-            onInput={(e) => setAgain((e.target as HTMLInputElement).value)}
-          />
-        </label>
-        <p class="help">
-          At least 8 characters with a letter and a number, and different from the old one.
-        </p>
-        {error && (
-          <p class="login-error" role="alert">
-            {error}
-          </p>
-        )}
-        <button class="btn btn-primary" type="submit" disabled={busy}>
-          {busy ? 'Saving…' : 'Set new password'}
-        </button>
-        <button class="btn" type="button" onClick={onLogout}>
-          Log out
-        </button>
       </form>
     </div>
   );

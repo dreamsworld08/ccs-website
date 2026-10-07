@@ -10,17 +10,17 @@
  *
  * Public actions : submitEnquiry, login, instagramFeed
  * Admin actions  : listEnquiries, updateEnquiry, listContent, getContent, saveContent,
- *                  deleteContent, uploadFile, changePassword, listAdmins, addAdmin,
- *                  setAdminActive, resetAdminPassword,
+ *                  deleteContent, uploadFile,
  *                  getInstagram, connectInstagram, saveInstagramSettings, refreshInstagram,
  *                  disconnectInstagram                     (all need a valid session token)
+ *
+ * Admin logins are FIXED in CONFIG.ADMINS below: only salted hashes of long random passwords, so nothing
+ * needs to be set up in Script Properties and the website has no way to add, change or reset an admin.
  *
  * Secrets live ONLY in Project Settings > Script Properties (never in this file, never in the repo):
  *   GITHUB_TOKEN          fine-grained token for this repo, Contents: read/write
  *   GITHUB_REPO           "owner/ccs-website"
  *   SIGNING_SECRET        long random string used to sign admin session tokens
- *   FIRST_ADMIN_LOGIN     } used once by setup() to create the first admin; setup() then deletes
- *   FIRST_ADMIN_PASSWORD  } the password property. There is no default login in the code.
  *   SHEET_ID              optional: id of the enquiries sheet, when this script is NOT bound to it
  *                         (a script owned by the developer, so the institute's account never holds the secrets)
  *   IG_*                  written by the admin's Instagram tab (access token, account name, display settings).
@@ -33,11 +33,23 @@ var CONFIG = {
   ALERT_EMAIL: '',
   GITHUB_BRANCH: 'main',
   TIMEZONE: 'Asia/Kolkata',
-  TOKEN_TTL_MS: 12 * 60 * 60 * 1000
+  TOKEN_TTL_MS: 12 * 60 * 60 * 1000,
+  // ADMIN LOGINS ARE FIXED HERE, IN CODE. There is no admin table, no password reset and no way to add an
+  // admin from the website, so nobody can change who may sign in except by changing this file.
+  // Only the password's salted SHA-256 hash is stored. This repository is public, so a password must be long
+  // and random (16+ characters, never a word or a pattern); a hash of a short or guessable password could be
+  // cracked offline.
+  //   Add a person / change a password:  npm run hash -- --generate   (prints a ready-to-paste entry and the
+  //                                      password, shown once), add the entry here, deploy a new version.
+  //   Remove access:                     delete the person's entry and deploy. Their open sessions end at once.
+  ADMINS: [
+    { login: 'admin.ccs.chandigar', name: 'CCS Admin',
+      salt: '118699d8eea2fbce7bb0bfc75efcfa8f',
+      hash: 'c36af045feb06205411aa84983c17a335e9167b4d6181b7986f8deca898f4ef1' }
+  ]
 };
 
 var ENQUIRY_SHEET = 'Enquiries';
-var ADMIN_SHEET = 'Admins';
 var SUMMARY_SHEET = 'Summary';
 var STATUSES = ['Open', 'Contacted', 'Resolved', 'Enrolled'];
 var EXAMS = ['UPSC CSE', 'Punjab PSC (PCS)', 'Punjab One Day Exams', 'Other'];
@@ -53,7 +65,6 @@ var COLS = ['Received (IST)', 'Name', 'Mobile', 'Email', 'Exam', 'Year of attemp
             'Source', 'UTM source', 'UTM medium', 'UTM campaign', 'Status', 'Notes', 'Last updated', 'Updated by', 'ID'];
 var C = {}; // column name -> 1-based index
 COLS.forEach(function (name, i) { C[name] = i + 1; });
-var ADMIN_COLS = ['email', 'name', 'salt', 'password_hash', 'active', 'must_change'];
 
 /* ================================ HTTP entry points ================================ */
 function doGet() {
@@ -82,8 +93,6 @@ function route_(p) {
 
   var me = authenticate_(p.token);
   if (!me) return { ok: false, code: 'auth', error: 'Session expired. Please log in again.' };
-  // A temporary or default password may only be used to choose a new one.
-  if (me.must_change && action !== 'changePassword') return { ok: false, code: 'must_change', error: 'Please set a new password to continue.' };
 
   switch (action) {
     case 'listEnquiries': return listEnquiries_();
@@ -93,11 +102,6 @@ function route_(p) {
     case 'saveContent': return saveContent_(p, me);
     case 'deleteContent': return deleteContent_(p, me);
     case 'uploadFile': return uploadFile_(p, me);
-    case 'changePassword': return changePassword_(p, me);
-    case 'listAdmins': return listAdmins_();
-    case 'addAdmin': return addAdmin_(p);
-    case 'setAdminActive': return setAdminActive_(p);
-    case 'resetAdminPassword': return resetAdminPassword_(p);
     case 'getInstagram': return getInstagram_();
     case 'connectInstagram': return connectInstagram_(p);
     case 'saveInstagramSettings': return saveInstagramSettings_(p);
@@ -149,12 +153,6 @@ function withLock_(fn) {
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try { return fn(); } finally { lock.releaseLock(); }
-}
-function passwordProblem_(pw) {
-  if (typeof pw !== 'string' || pw.length < 8) return 'Password must be at least 8 characters.';
-  if (pw.length > 100) return 'Password is too long.';
-  if (!/[A-Za-z]/.test(pw) || !/\d/.test(pw)) return 'Password needs at least one letter and one number.';
-  return '';
 }
 
 /* ================================== enquiries ================================== */
@@ -253,17 +251,10 @@ function updateEnquiry_(p, me) {
 }
 
 /* ================================ admins & auth ================================ */
-function adminSheet_() { return ss_().getSheetByName(ADMIN_SHEET); }
-
-function readAdmins_() {
-  var sh = adminSheet_();
-  var last = sh.getLastRow();
-  if (last < 2) return [];
-  return sh.getRange(2, 1, last - 1, ADMIN_COLS.length).getValues().map(function (r, i) {
-    return { row: i + 2, email: String(r[0]).toLowerCase(), name: String(r[1]), salt: String(r[2]),
-             password_hash: String(r[3]), active: r[4] === true || String(r[4]).toLowerCase() === 'true',
-             must_change: r[5] === true || String(r[5]).toLowerCase() === 'true' };
-  });
+/** The fixed admin for a login (case-insensitive), or undefined. Logins exist only in CONFIG.ADMINS. */
+function findAdmin_(login) {
+  var wanted = String(login || '').toLowerCase();
+  return CONFIG.ADMINS.filter(function (a) { return String(a.login).toLowerCase() === wanted; })[0];
 }
 
 function login_(p) {
@@ -274,16 +265,17 @@ function login_(p) {
   var failKey = 'fail:' + sha256Hex_(email);
   var fails = Number(cache.get(failKey) || 0);
   if (fails >= 5) return { ok: false, code: 'locked', error: 'Too many failed attempts. Try again in 15 minutes.' };
-  var admin = readAdmins_().filter(function (a) { return a.email === email && a.active; })[0];
-  var ok = admin && safeEqual_(sha256Hex_(admin.salt + password), admin.password_hash);
+  var admin = findAdmin_(email);
+  var ok = admin && safeEqual_(sha256Hex_(admin.salt + password), admin.hash);
   if (!ok) {
     cache.put(failKey, String(fails + 1), 900);
     return { ok: false, error: 'Incorrect login or password.' };
   }
   cache.remove(failKey);
-  var payload = Utilities.base64EncodeWebSafe(admin.email + '|' + (Date.now() + CONFIG.TOKEN_TTL_MS)).replace(/=+$/, '');
-  return { ok: true, token: payload + '.' + hmacHex_(payload), name: admin.name, email: admin.email,
-           expires_in: CONFIG.TOKEN_TTL_MS / 1000, must_change: admin.must_change };
+  var login = String(admin.login).toLowerCase();
+  var payload = Utilities.base64EncodeWebSafe(login + '|' + (Date.now() + CONFIG.TOKEN_TTL_MS)).replace(/=+$/, '');
+  return { ok: true, token: payload + '.' + hmacHex_(payload), name: admin.name, email: login,
+           expires_in: CONFIG.TOKEN_TTL_MS / 1000 };
 }
 
 function authenticate_(token) {
@@ -295,60 +287,8 @@ function authenticate_(token) {
     decoded = Utilities.newBlob(Utilities.base64DecodeWebSafe(parts[0])).getDataAsString().split('|');
   } catch (e) { return null; }
   if (decoded.length !== 2 || !(Number(decoded[1]) > Date.now())) return null;
-  // A deactivated admin loses access immediately, even with an unexpired token.
-  return readAdmins_().filter(function (a) { return a.email === decoded[0] && a.active; })[0] || null;
-}
-
-function changePassword_(p, me) {
-  var problem = passwordProblem_(p.new_password);
-  if (!safeEqual_(sha256Hex_(me.salt + String(p.old_password || '')), me.password_hash)) return { ok: false, error: 'Current password is incorrect.' };
-  if (problem) return { ok: false, error: problem };
-  if (p.new_password === p.old_password) return { ok: false, error: 'Choose a password different from the current one.' };
-  return withLock_(function () { setPassword_(me.row, p.new_password, false); return { ok: true }; });
-}
-function setPassword_(row, password, mustChange) {
-  var salt = randomHex_(16);
-  adminSheet_().getRange(row, 3, 1, 2).setValues([[salt, sha256Hex_(salt + password)]]);
-  adminSheet_().getRange(row, 6).setValue(Boolean(mustChange));
-}
-
-function listAdmins_() {
-  return { ok: true, admins: readAdmins_().map(function (a) { return { email: a.email, name: a.name, active: a.active }; }) };
-}
-function addAdmin_(p) {
-  var email = clip_(p.email, 120).toLowerCase();
-  var name = clip_(p.name, 60);
-  if (!/^[a-z0-9._@+-]{3,120}$/.test(email)) return { ok: false, error: 'Login must be 3-120 characters (letters, numbers, . _ - @).' };
-  if (name.length < 2) return { ok: false, error: 'Enter the admin’s name.' };
-  var problem = passwordProblem_(p.password);
-  if (problem) return { ok: false, error: problem };
-  return withLock_(function () {
-    if (readAdmins_().some(function (a) { return a.email === email; })) return { ok: false, error: 'An admin with this login already exists.' };
-    var salt = randomHex_(16);
-    adminSheet_().appendRow([email, noFormula_(name), salt, sha256Hex_(salt + p.password), true, true]);
-    return { ok: true };
-  });
-}
-function setAdminActive_(p) {
-  return withLock_(function () {
-    var admins = readAdmins_();
-    var a = admins.filter(function (x) { return x.email === String(p.email || '').toLowerCase(); })[0];
-    if (!a) return { ok: false, error: 'Admin not found.' };
-    var active = p.active === 'true' || p.active === true;
-    if (!active && admins.filter(function (x) { return x.active && x.email !== a.email; }).length === 0) return { ok: false, error: 'You cannot deactivate the last active admin.' };
-    adminSheet_().getRange(a.row, 5).setValue(active);
-    return { ok: true };
-  });
-}
-function resetAdminPassword_(p) {
-  var problem = passwordProblem_(p.password);
-  if (problem) return { ok: false, error: problem };
-  return withLock_(function () {
-    var a = readAdmins_().filter(function (x) { return x.email === String(p.email || '').toLowerCase(); })[0];
-    if (!a) return { ok: false, error: 'Admin not found.' };
-    setPassword_(a.row, p.password, true); // whoever received the temporary password must replace it
-    return { ok: true };
-  });
+  // An admin removed from CONFIG.ADMINS loses access immediately, even with an unexpired token.
+  return findAdmin_(decoded[0]) || null;
 }
 
 /* ============================ content via GitHub API ============================ */
@@ -958,27 +898,6 @@ function setup() {
     return SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo(s).setBackground(colours[s][0]).setFontColor(colours[s][1]).setRanges([statusRange]).build();
   }));
   sheet.getRange(1, C['ID']).setNote('Stable unique key. Do not edit or delete: the admin panel uses it to find the right row.');
-
-  // ---- Admins (hidden + protected: holds password hashes, never share this sheet as Editor)
-  var admins = ss.getSheetByName(ADMIN_SHEET) || ss.insertSheet(ADMIN_SHEET);
-  admins.getRange(1, 1, 1, ADMIN_COLS.length).setValues([ADMIN_COLS]).setFontWeight('bold');
-  admins.setFrozenRows(1);
-  if (admins.getLastRow() < 2) {
-    // The first admin comes from Script Properties so no login or password ever lives in the code or the repo.
-    var login = clip_(props_().getProperty('FIRST_ADMIN_LOGIN'), 120).toLowerCase();
-    var password = String(props_().getProperty('FIRST_ADMIN_PASSWORD') || '');
-    if (!/^[a-z0-9._@+-]{3,120}$/.test(login) || passwordProblem_(password)) {
-      throw new Error('Before running setup(), add the Script Properties FIRST_ADMIN_LOGIN (3+ characters) and ' +
-        'FIRST_ADMIN_PASSWORD (8+ characters with a letter and a number). See SETUP.md step 4.');
-    }
-    var salt = randomHex_(16);
-    admins.appendRow([login, noFormula_(clip_(props_().getProperty('FIRST_ADMIN_NAME') || 'Administrator', 60)), salt, sha256Hex_(salt + password), true, false]);
-    props_().deleteProperty('FIRST_ADMIN_PASSWORD'); // the plaintext does not stay anywhere
-  }
-  var protection = admins.protect().setDescription('Admin logins: owner only');
-  protection.removeEditors(protection.getEditors().filter(function (u) { return u.getEmail() !== Session.getEffectiveUser().getEmail(); }));
-  if (protection.canDomainEdit()) protection.setDomainEdit(false);
-  admins.hideSheet();
 
   // ---- Summary (formulas; a backup view of what /admin shows)
   var sum = ss.getSheetByName(SUMMARY_SHEET) || ss.insertSheet(SUMMARY_SHEET);

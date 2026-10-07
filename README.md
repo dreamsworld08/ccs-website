@@ -35,9 +35,9 @@ npm run dev
   delete the file to reset),
 - content edits and image uploads from `/admin` are written straight into `src/content/` and `public/uploads/`, so
   the site updates immediately,
-- the first start generates a signing secret in `dev-server/data/.secret` and a throw-away local admin login in
-  `dev-server/data/admins.json` (both git-ignored; set `DEV_ADMIN_PASSWORD` to choose another password). **There is no
-  default login in production**: the first real admin is created from Script Properties ([SETUP.md](google-apps-script/SETUP.md)).
+- the first start generates a signing secret in `dev-server/data/.secret` (git-ignored). The local backend has one
+  throw-away login (`admin.ccs.chandigar` / `Admin@123`, or the password in `DEV_ADMIN_PASSWORD`) that exists only on your
+  computer. **Production has its own fixed logins** in `CONFIG.ADMINS` in `google-apps-script/Code.gs` (below).
 
 Stop everything with `Ctrl+C`, then `npx astro dev stop` if the site server is still running in the background.
 
@@ -67,7 +67,7 @@ also watches `/build.json` to confirm the new build.
 (`instagramFeed`, cached 15 minutes) for the latest posts when the page is idle and draws them in the browser. See
 [Live Instagram feed](#live-instagram-feed).
 
-**Secrets** (`GITHUB_TOKEN`, `GITHUB_REPO`, `SIGNING_SECRET`, the first admin's password, the Instagram access token) live only in Apps Script. The Apps Script URL in
+**Secrets** (`GITHUB_TOKEN`, `GITHUB_REPO`, `SIGNING_SECRET`, the Instagram access token) live only in Apps Script. The Apps Script URL in
 `src/config/backend.ts` is public by design; every admin action needs a valid token.
 
 ## Content
@@ -209,7 +209,7 @@ Home page (idle) ──instagramFeed──►─────┘  returns only sa
 | `npm run preview`              | Serve `dist/`                                                                             |
 | `npm run check`                | Type-check Astro, TypeScript and content                                                  |
 | `npm run lint` / `format`      | ESLint / Prettier                                                                         |
-| `npm run hash -- 'pw'`         | Make a salted password hash for the Admins sheet or `dev-server/data/admins.json`         |
+| `npm run hash -- --generate`   | Make an admin login for `CONFIG.ADMINS`: a long random password (shown once) and its hash |
 | `npm run rules`                | Regenerate the backend's content lock from `src/admin/schemas.ts` (`-- --check` verifies) |
 | `npm run prune:uploads`        | List uploaded files no page uses (`-- --delete` removes them)                             |
 | `npm run placeholders`         | Regenerate the placeholder artwork in `public/uploads/placeholders`                       |
@@ -265,11 +265,18 @@ admin management). It cannot prove Google's runtime accepts every call, so follo
 
 ## Admins
 
-Admins are rows in the hidden **Admins** tab of the sheet (login, name, salted hash, active, must-change).
-Manage them in **Admin > Settings > Admins**: add (they get a temporary password they must replace at first sign-in),
-reset a password, deactivate. Locally they live in `dev-server/data/admins.json`. The first admin is created by `setup()`
-from the Script Properties `FIRST_ADMIN_LOGIN` and `FIRST_ADMIN_PASSWORD`; no login or password is stored in the code.
-All admins can change content only, never layout or features.
+Admin logins are **fixed in the code**: the list `CONFIG.ADMINS` at the top of `google-apps-script/Code.gs` (name, login,
+salt and the salted hash of a long random password; never the password). There is no admin table, no password reset
+and no way to add an admin from the website, so nobody can change who may sign in except by changing that file.
+
+- **Add a person or change a password:** `npm run hash -- --generate staff.name 'Staff Name'` prints a ready-to-paste
+  entry and the password (shown once: save it in a password manager and hand it over privately). Paste the entry into
+  `CONFIG.ADMINS`, copy `Code.gs` into Apps Script and **Deploy > Manage deployments > Edit > New version**.
+- **Remove access:** delete the person's entry and deploy a new version. Their open sessions end at once.
+- Every admin can change **content only**, never layout or features, and each change shows who made it ("Updated by").
+- The repository is public, so the hashes are public: only use passwords from `--generate` (20 random characters) or at
+  least 16 random characters. A short or guessable password could be cracked offline; `npm run hash` refuses them.
+- Locally the one dev login lives in `dev-server/server.mjs`.
 
 ## Before launch checklist
 
@@ -278,10 +285,10 @@ All admins can change content only, never layout or features.
 - [ ] Optional: connect the institute's Instagram account in **Admin > Instagram** for the live feed on the Home page.
 - [ ] Replace the sample content (everything marked **Sample** in the admin): contact details, stats, founder
       message, teachers, results, hero video (the seeded video is only a placeholder).
-- [ ] Set up the backend with your own first admin ([SETUP.md](google-apps-script/SETUP.md)), and work through
+- [ ] Set up the backend ([SETUP.md](google-apps-script/SETUP.md)), save the admin password somewhere safe, and work through
       "Do this before going live" in [SECURITY.md](SECURITY.md) (script in your own Google account, two-factor
       authentication, token expiry).
-- [ ] Add the real staff as admins; share the enquiry sheet only as **Viewer** (or not at all).
+- [ ] Add each real staff member with `npm run hash -- --generate` (see "Admins"); share the enquiry sheet only as **Viewer** (or not at all).
 - [ ] Review the Privacy Policy text with the institute. The enquiry form says submitting means agreeing to be contacted.
 - [ ] Upload the real photos in the admin, then run `npm run prune:uploads` to drop anything unused.
 

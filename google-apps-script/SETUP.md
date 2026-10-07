@@ -59,15 +59,12 @@ The token lets the script commit content edits to the repo. It never goes in the
 
 In Apps Script: **Project Settings > Script Properties > Add script property**. Add these:
 
-| Property               | Value                                                                                           |
-| ---------------------- | ----------------------------------------------------------------------------------------------- |
-| `GITHUB_TOKEN`         | the token from step 3                                                                           |
-| `GITHUB_REPO`          | `your-github-username/ccs-website`                                                              |
-| `SIGNING_SECRET`       | a long random string, at least 32 characters (mash the keyboard, or run `openssl rand -hex 32`) |
-| `FIRST_ADMIN_LOGIN`    | the login of the first admin, for example your own email (3+ characters)                        |
-| `FIRST_ADMIN_PASSWORD` | a long, unique password: 8+ characters with a letter and a number                               |
-| `FIRST_ADMIN_NAME`     | optional: the name shown next to changes, default `Administrator`                               |
-| `SHEET_ID`             | only for setup C (step 1)                                                                       |
+| Property         | Value                                                                                           |
+| ---------------- | ----------------------------------------------------------------------------------------------- |
+| `GITHUB_TOKEN`   | the token from step 3                                                                           |
+| `GITHUB_REPO`    | `your-github-username/ccs-website`                                                              |
+| `SIGNING_SECRET` | a long random string, at least 32 characters (mash the keyboard, or run `openssl rand -hex 32`) |
+| `SHEET_ID`       | only for setup C (step 1)                                                                       |
 
 > Never put these in the repo, in an email or in the website code. If the token leaks, delete it on GitHub and make a new one.
 
@@ -76,12 +73,12 @@ In Apps Script: **Project Settings > Script Properties > Add script property**. 
 1. In the editor, pick **setup** in the function dropdown (top bar) and press **Run**.
 2. Google asks for permission: **Review permissions > choose the account > Advanced > Go to CCS Enquiries (unsafe) > Allow.**
    (It says "unsafe" only because you wrote the script yourself and Google has not reviewed it.)
-3. When it finishes, the sheet has these tabs: **Enquiries**, **Summary** and a hidden **Admins** tab. It also created
-   the first admin from `FIRST_ADMIN_LOGIN` / `FIRST_ADMIN_PASSWORD` and then **deleted the password property**, so the
-   password is nowhere except as a salted hash in the hidden Admins tab. **There is no default login:** if you forgot
-   the two properties, `setup()` stops with a message saying so, and nothing is created.
-4. Add the real staff under **Settings > Admins** in the admin panel (they get a temporary password and must replace it
-   at their first sign-in). Staff can change content only; layout and features can only be changed in the code.
+3. When it finishes, the sheet has the tabs **Enquiries** and **Summary**. **Nothing about admins lives in the sheet or
+   in Script Properties:** the logins are fixed in the code, in `CONFIG.ADMINS` at the top of `Code.gs` (only salted hashes
+   of long random passwords). The login that ships is `admin.ccs.chandigar`; its password was shown to the developer once.
+4. To add staff, change a password or remove someone, run `npm run hash -- --generate staff.name 'Staff Name'`, paste the
+   printed entry into `CONFIG.ADMINS`, copy `Code.gs` into Apps Script again and deploy a new version (step 6). Staff can
+   change content only; layout and features can only be changed in the code.
 
 ## Step 6: Deploy as a web app
 
@@ -96,7 +93,7 @@ In Apps Script: **Project Settings > Script Properties > Add script property**. 
 1. Open `src/config/backend.ts` and replace `PASTE_APPS_SCRIPT_WEB_APP_URL_HERE` with the URL from step 6.
 2. Commit and push. GitHub rebuilds the site (about 2 minutes).
 3. Test: open the live site, submit the enquiry popup, and check a new row appears at the top of the **Enquiries** tab with Status **Open**. A form with only name, mobile number and exam must work too: the other fields are optional.
-4. Sign in at `/admin/` with the first admin and check that Settings has no Free Tests switch (that one belongs to the developer).
+4. Sign in at `/admin/` with the fixed admin login and check that Settings has no Free Tests switch (that one belongs to the developer).
 
 ## Step 8 (optional): Instagram live feed
 
@@ -127,19 +124,19 @@ The URL stays the same.
 ## Sharing the sheet with staff
 
 - Staff normally never need the sheet: they use the admin panel.
-- If someone needs to see it, share as **Viewer**, never Editor. The Admins tab holds password hashes and is hidden and protected, but only the owner account is a safe place to manage it.
+- If someone needs to see it, share as **Viewer**, never Editor. The sheet holds enquiries (personal data) but no logins.
 - Do not rename or reorder columns and do not delete the **ID** column. The admin panel finds rows by it.
 
 ## Troubleshooting
 
-| Symptom                                                        | Fix                                                                                                                                                                                                        |
-| -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Admin says "Session expired" straight after login              | `SIGNING_SECRET` is missing or shorter than 16 characters.                                                                                                                                                 |
-| "GITHUB_REPO / GITHUB_TOKEN script properties are missing"     | Step 4, check the spelling of the property names.                                                                                                                                                          |
-| "Could not save to GitHub (error 401/403)"                     | Token expired or lacks **Contents: Read and write** on `ccs-website`.                                                                                                                                      |
-| "Could not save to GitHub (error 404)"                         | `GITHUB_REPO` is wrong, or the token was not granted this repo.                                                                                                                                            |
-| Enquiry form shows "Call us / WhatsApp us"                     | The URL in `src/config/backend.ts` is wrong or the deployment access is not "Anyone".                                                                                                                      |
-| Times look wrong                                               | Project Settings > Time zone must be **Asia/Kolkata** (setup() also sets the sheet's time zone).                                                                                                           |
-| Instagram tab: "Instagram no longer accepts this access token" | The token expired (no website visits for ~50 days) or was revoked. Generate a new one and use **Replace access token**.                                                                                    |
-| Instagram section missing on the Home page                     | Tab says not connected, or the switch is off, or there are no posts yet (press **Refresh now**). Check the Apps Script URL in `src/config/backend.ts` is set: without it the section is not built at all.  |
-| Lost the admin password                                        | In the hidden Admins tab (View > Hidden sheets) paste a new salt + hash made with `npm run hash -- 'NewPassword1'`, or delete the admin's row, add the `FIRST_ADMIN_*` properties again and run `setup()`. |
+| Symptom                                                        | Fix                                                                                                                                                                                                       |
+| -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Admin says "Session expired" straight after login              | `SIGNING_SECRET` is missing or shorter than 16 characters.                                                                                                                                                |
+| "GITHUB_REPO / GITHUB_TOKEN script properties are missing"     | Step 4, check the spelling of the property names.                                                                                                                                                         |
+| "Could not save to GitHub (error 401/403)"                     | Token expired or lacks **Contents: Read and write** on `ccs-website`.                                                                                                                                     |
+| "Could not save to GitHub (error 404)"                         | `GITHUB_REPO` is wrong, or the token was not granted this repo.                                                                                                                                           |
+| Enquiry form shows "Call us / WhatsApp us"                     | The URL in `src/config/backend.ts` is wrong or the deployment access is not "Anyone".                                                                                                                     |
+| Times look wrong                                               | Project Settings > Time zone must be **Asia/Kolkata** (setup() also sets the sheet's time zone).                                                                                                          |
+| Instagram tab: "Instagram no longer accepts this access token" | The token expired (no website visits for ~50 days) or was revoked. Generate a new one and use **Replace access token**.                                                                                   |
+| Instagram section missing on the Home page                     | Tab says not connected, or the switch is off, or there are no posts yet (press **Refresh now**). Check the Apps Script URL in `src/config/backend.ts` is set: without it the section is not built at all. |
+| Lost the admin password                                        | Run `npm run hash -- --generate admin.ccs.chandigar 'CCS Admin'`, replace the entry in `CONFIG.ADMINS`, copy `Code.gs` into Apps Script and deploy a new version. The new password is shown once.         |

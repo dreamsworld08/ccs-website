@@ -172,7 +172,8 @@ export default function EnquiriesTab({ attemptYears }: { attemptYears: string[] 
     }
   }
 
-  function exportCsv() {
+  /** Downloads `list` as a CSV (opens in Excel or Google Sheets). `all` names the file for the full list. */
+  function exportCsv(list: Row[], all: boolean) {
     const head = [
       'Received (IST)',
       'Name',
@@ -192,7 +193,7 @@ export default function EnquiriesTab({ attemptYears }: { attemptYears: string[] 
       'Updated by',
     ];
     const lines = [head.map(csvCell).join(',')];
-    for (const r of filtered) {
+    for (const r of list) {
       lines.push(
         [
           fmtIst(r.received),
@@ -219,7 +220,7 @@ export default function EnquiriesTab({ attemptYears }: { attemptYears: string[] 
     const blob = new Blob([`\ufeff${lines.join('\r\n')}`], { type: 'text/csv;charset=utf-8' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `ccs-enquiries-${todayIst()}.csv`;
+    a.download = `ccs-enquiries-${all ? 'all-' : ''}${todayIst()}.csv`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -243,9 +244,19 @@ export default function EnquiriesTab({ attemptYears }: { attemptYears: string[] 
           <button class="btn" onClick={() => load()} disabled={refreshing}>
             {refreshing ? 'Refreshing…' : 'Refresh'}
           </button>
-          <button class="btn" onClick={exportCsv} disabled={!filtered.length}>
-            Export CSV ({filtered.length})
+          {/* Every enquiry, whatever filters are set. The other button only exports what the filters show. */}
+          <button class="btn" onClick={() => exportCsv(rows ?? [], true)} disabled={!rows?.length}>
+            Download all enquiries (CSV{rows ? `, ${rows.length}` : ''})
           </button>
+          {rows && filtered.length !== rows.length && (
+            <button
+              class="btn"
+              onClick={() => exportCsv(filtered, false)}
+              disabled={!filtered.length}
+            >
+              Download the {filtered.length} shown (CSV)
+            </button>
+          )}
         </div>
       </div>
 

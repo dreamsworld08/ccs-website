@@ -1,8 +1,8 @@
-/* global doPost, doGet, setup, cleanContent_, CONTENT_RULES */
+/* global doPost, doGet, setup, cleanContent_, CONTENT_RULES, CONFIG */
 // Runs the REAL google-apps-script/Code.gs against in-memory fakes of the Apps Script services
 // (Sheets, Cache, Lock, UrlFetch for the GitHub API, Utilities...). It cannot prove Google's
 // runtime accepts every call, but it exercises all the business logic: validation, auth, token
-// signing, stable row ids, GitHub commit/sha-conflict handling, upload checks, admin management.
+// signing, stable row ids, GitHub commit/sha-conflict handling, upload checks, the fixed admin logins.
 //   npm run test:gs
 import { createHash, createHmac, randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
@@ -333,35 +333,87 @@ check(
   rulesStale,
 );
 
-console.log('\nsetup()');
-let refused = '';
-try {
-  setup();
-} catch (e) {
-  refused = String(e.message);
-}
+console.log('\nfixed admin logins (set in Code.gs: nothing to set up, nothing to add)');
+const sha = (text) => createHash('sha256').update(text).digest('hex');
+const codeText = readFileSync(new URL('../google-apps-script/Code.gs', import.meta.url), 'utf8');
+const shippedAdmins = CONFIG.ADMINS.map((a) => ({ ...a }));
 check(
-  /FIRST_ADMIN_LOGIN/.test(refused) && sheets.get('Admins').getLastRow() <= 1,
-  'setup() refuses to create an admin without Script Properties (there is no default login)',
-  refused,
+  shippedAdmins.length >= 1 &&
+    shippedAdmins.every(
+      (a) => a.login && a.name && /^[a-f0-9]{32}$/.test(a.salt) && /^[a-f0-9]{64}$/.test(a.hash),
+    ),
+  'each shippedAdmins login is a name plus a salted SHA-256 hash, never a password',
 );
-Object.assign(props, {
-  FIRST_ADMIN_LOGIN: 'Admin.CCS.Chandigar',
-  FIRST_ADMIN_PASSWORD: 'Initial#Pass1',
-  FIRST_ADMIN_NAME: 'CCS Admin',
-  SHEET_ID: 'sheet-from-property',
-});
-setup();
+// The repository is public, so the hash is public. It is only safe because the password behind it is long and
+// random: make sure it is not any password a person (or a cracking list) would try first.
+const GUESSES = [
+  'Admin@123',
+  'admin',
+  'Admin123',
+  'Admin@1234',
+  'admin123',
+  'password',
+  'Password1',
+  'Password@123',
+  '12345678',
+  'qwerty123',
+  'ccs@12345',
+  'Ccs@12345',
+  'ccs12345',
+  'Chandigarh@123',
+  'chandigarh',
+  'ChandigarhCivilServices',
+  'chandigarhcivilservices',
+  'chandigarhcivilservices.com',
+  'admin.ccs.chandigar',
+  'Admin.CCS.Chandigar',
+  'welcome123',
+  'Welcome@123',
+  'letmein',
+  'iloveyou',
+  'India@123',
+  'Punjab@123',
+];
+check(
+  shippedAdmins.every((a) => GUESSES.every((g) => sha(a.salt + g) !== a.hash)),
+  'no shippedAdmins login uses a known or guessable password',
+);
+check(!codeText.includes('Admin@123'), 'Code.gs contains no default password');
+check(
+  shippedAdmins.every(
+    (a, i) => shippedAdmins.findIndex((b) => b.login.toLowerCase() === a.login.toLowerCase()) === i,
+  ),
+  'logins are unique',
+);
+
+// From here on the tests use known throw-away logins instead of the real (secret) ones.
+const TEST_PW = 'Test-only-password-9xK2mQ7pLw';
+const STAFF_PW = 'Staff-only-password-4tR8vN3cZb';
+const fixed = (login, name, password) => {
+  const salt = createHash('md5').update(login).digest('hex');
+  return { login, name, salt, hash: sha(salt + password) };
+};
+CONFIG.ADMINS = [
+  fixed('admin.ccs.chandigar', 'CCS Admin', TEST_PW),
+  fixed('staff.one', 'Staff One', STAFF_PW),
+];
+
+console.log('\nsetup()');
+props.SHEET_ID = 'sheet-from-property';
+setup(); // needs no admin properties: the logins are in the code
 check(
   openedById === 'sheet-from-property',
   'SHEET_ID makes the script work on a sheet it is not bound to',
 );
 delete props.SHEET_ID;
 check(
-  ['Enquiries', 'Admins', 'Summary'].every((n) => sheets.has(n)),
-  'creates Enquiries, Admins and Summary tabs',
+  ['Enquiries', 'Summary'].every((n) => sheets.has(n)),
+  'creates the Enquiries and Summary tabs',
 );
-check(sheets.get('Admins').hidden, 'Admins tab is hidden');
+check(
+  !sheets.has('Admins'),
+  'there is no Admins tab: nobody can edit logins from the sheet either',
+);
 check(
   sheets
     .get('Enquiries')
@@ -372,23 +424,11 @@ check(
   'Enquiries headers match the spec',
 );
 check(
-  sheets.get('Admins').rows[1][0] === 'admin.ccs.chandigar' &&
-    sheets.get('Admins').rows[1][3].length === 64,
-  'first admin comes from the Script Properties and is stored as a SHA-256 hash',
-);
-check(
-  !JSON.stringify(sheets.get('Admins').rows).includes('Initial#Pass1'),
-  'plaintext password is nowhere in the sheet',
-);
-check(props.FIRST_ADMIN_PASSWORD === undefined, 'the password property is deleted after setup');
-check(
-  !readFileSync(new URL('../google-apps-script/Code.gs', import.meta.url), 'utf8').includes(
-    'Admin@123',
-  ),
-  'Code.gs contains no default password',
+  !JSON.stringify([...sheets.values()].map((sh) => sh.rows)).includes(TEST_PW),
+  'no password is written anywhere in the sheet',
 );
 setup();
-check(sheets.get('Admins').getLastRow() === 2, 'setup() is safe to re-run (no duplicate admin)');
+check(sheets.get('Enquiries').rows[0][0] === 'Received (IST)', 'setup() is safe to re-run');
 
 console.log('\nlogin + session tokens');
 check(
@@ -399,35 +439,15 @@ check(
   !call({ action: 'login', email: 'admin.ccs.chandigar', password: 'Admin@123' }).ok,
   'the old published default password does not work',
 );
-const session = call({ action: 'login', email: 'Admin.CCS.Chandigar', password: 'Initial#Pass1' });
+const session = call({ action: 'login', email: 'Admin.CCS.Chandigar', password: TEST_PW });
 check(
-  session.ok && session.name === 'CCS Admin' && session.token.includes('.'),
-  'the first admin can log in (login is case-insensitive)',
+  session.ok &&
+    session.name === 'CCS Admin' &&
+    session.token.includes('.') &&
+    session.must_change === undefined,
+  'a fixed admin can log in (login is case-insensitive); there is no forced password change',
 );
-check(
-  session.must_change === false,
-  'the developer chose this password, so there is no forced change',
-);
-check(
-  !call({
-    action: 'changePassword',
-    token: session.token,
-    old_password: 'Initial#Pass1',
-    new_password: 'Initial#Pass1',
-  }).ok,
-  'new password must differ from the old one',
-);
-check(
-  !call({
-    action: 'changePassword',
-    token: session.token,
-    old_password: 'Initial#Pass1',
-    new_password: 'short',
-  }).ok,
-  'weak new password refused',
-);
-const login2 = session;
-const T = login2.token;
+const T = session.token;
 check(call({ action: 'listEnquiries' }).code === 'auth', 'no token rejected');
 check(
   call({ action: 'listEnquiries', token: `${T.split('.')[0]}.${'0'.repeat(64)}` }).code === 'auth',
@@ -973,91 +993,51 @@ check(
   'garbage base64 refused',
 );
 
-console.log('\nadmin management');
+console.log('\nfixed logins stay fixed');
+const staff = call({ action: 'login', email: 'staff.one', password: STAFF_PW });
+check(staff.ok && staff.name === 'Staff One', 'a second fixed login works');
 check(
-  call({ action: 'addAdmin', token: T, email: 'staff1', name: 'Staff One', password: 'short' })
-    .ok === false,
-  'weak password refused',
-);
-check(
-  call({ action: 'addAdmin', token: T, email: 'staff1', name: 'Staff One', password: 'Staff1pass' })
-    .ok,
-  'add admin',
-);
-check(
-  !call({ action: 'addAdmin', token: T, email: 'STAFF1', name: 'Dup', password: 'Staff1pass' }).ok,
-  'duplicate login refused',
-);
-const s2a = call({ action: 'login', email: 'staff1', password: 'Staff1pass' });
-check(
-  s2a.ok && s2a.name === 'Staff One' && s2a.must_change === true,
-  'new admin can log in but must replace the temporary password',
-);
-check(
-  call({ action: 'updateEnquiry', token: s2a.token, row_id: target.row_id, notes: 'x' }).code ===
-    'must_change',
-  'temporary password cannot do anything else',
-);
-check(
-  call({
-    action: 'changePassword',
-    token: s2a.token,
-    old_password: 'Staff1pass',
-    new_password: 'Staff2pass',
-  }).ok,
-  'new admin chooses their own password',
-);
-const s2 = call({ action: 'login', email: 'staff1', password: 'Staff2pass' });
-check(s2.ok && s2.must_change === false, 'then works normally');
-check(
-  call({ action: 'updateEnquiry', token: s2.token, row_id: target.row_id, notes: 'by staff' })
+  call({ action: 'updateEnquiry', token: staff.token, row_id: target.row_id, notes: 'by staff' })
     .updated_by === 'Staff One',
   '"Updated by" records who made the change',
 );
-check(
-  !JSON.stringify(sheets.get('Admins').rows).includes('Staff1pass'),
-  'new admin password stored only as hash',
-);
-check(
-  call({ action: 'setAdminActive', token: T, email: 'staff1', active: 'false' }).ok,
-  'deactivate admin',
-);
-check(
-  call({ action: 'listEnquiries', token: s2.token }).code === 'auth',
-  'deactivated admin loses access immediately, even with a valid token',
-);
-check(
-  !call({ action: 'login', email: 'staff1', password: 'Staff2pass' }).ok,
-  'deactivated admin cannot log in',
-);
-call({ action: 'setAdminActive', token: T, email: 'staff1', active: 'true' });
-check(
-  call({ action: 'resetAdminPassword', token: T, email: 'staff1', password: 'Newpass99' }).ok &&
-    call({ action: 'login', email: 'staff1', password: 'Newpass99' }).must_change === true,
-  'reset password (and the person must replace the temporary one)',
-);
-check(
-  !call({ action: 'changePassword', token: T, old_password: 'wrong', new_password: 'Another123' })
-    .ok,
-  'changePassword needs the current password',
-);
-check(
-  call({
-    action: 'changePassword',
+for (const action of [
+  'changePassword',
+  'listAdmins',
+  'addAdmin',
+  'setAdminActive',
+  'resetAdminPassword',
+]) {
+  const r = call({
+    action,
     token: T,
-    old_password: 'Initial#Pass1',
-    new_password: 'Another123',
-  }).ok &&
-    call({ action: 'login', email: 'admin.ccs.chandigar', password: 'Another123' }).ok &&
-    !call({ action: 'login', email: 'admin.ccs.chandigar', password: 'Initial#Pass1' }).ok,
-  'changePassword switches the login',
-);
-call({ action: 'setAdminActive', token: T, email: 'staff1', active: 'false' });
+    email: 'someone.new',
+    name: 'Someone New',
+    password: 'A-long-enough-password-12',
+    old_password: TEST_PW,
+    new_password: 'Another-long-password-34',
+  });
+  check(
+    r.ok === false && /Unknown action/.test(r.error),
+    `"${action}" does not exist: logins cannot be added, changed or reset through the website`,
+  );
+}
 check(
-  call({ action: 'setAdminActive', token: T, email: 'admin.ccs.chandigar', active: 'false' }).ok ===
-    false,
-  'cannot deactivate the last active admin',
+  !call({ action: 'login', email: 'someone.new', password: 'A-long-enough-password-12' }).ok,
+  'a login that is not in the code cannot be made to work',
 );
+const everyone = CONFIG.ADMINS;
+CONFIG.ADMINS = everyone.filter((a) => a.login !== 'staff.one');
+check(
+  call({ action: 'listEnquiries', token: staff.token }).code === 'auth',
+  'an admin removed from the code loses access at once, even with a valid token',
+);
+check(
+  !call({ action: 'login', email: 'staff.one', password: STAFF_PW }).ok,
+  '...and cannot log in again',
+);
+CONFIG.ADMINS = everyone;
+check(call({ action: 'listEnquiries', token: T }).ok, 'the remaining admin is not affected');
 check(!call({ action: 'nope', token: T }).ok, 'unknown action rejected');
 check(JSON.parse(doGet().text).ok, 'doGet health check');
 

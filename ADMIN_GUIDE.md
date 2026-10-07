@@ -4,8 +4,9 @@ Open the admin at **your-website-address/admin/** and sign in with the login and
 You do not need a GitHub or Google account. Content you save goes live on the website in **about 2 minutes**
 (you will see a green message saying so).
 
-> **First sign-in:** if you were given a temporary password, you will be asked to choose your own before you
-> can do anything else. Pick something only you know: at least 8 characters, with a letter and a number.
+> **Your login is fixed by your developer.** You are given a username and a long password. Keep the password in a
+> password manager and never share it. It cannot be changed or reset from the admin; if it is lost, or someone new
+> needs access (or someone has left), ask your developer: they add or remove logins in the website's code.
 
 Sample entries are marked **Sample**. Edit or delete them before launch.
 
@@ -46,7 +47,7 @@ students who left it blank), Status, Source.
 **Source** tells you where the student came from: _Popup_, _Page: /courses/_, _Exam updates sign-up_ or
 _Landing: the-page-name_ (a campaign page).
 
-**Export**: **Export CSV** downloads exactly the rows you are looking at (open it in Excel or Google Sheets).
+**Download**: **Download all enquiries (CSV)** saves every enquiry, whatever filters are set (open it in Excel or Google Sheets). When filters are on, a second button downloads just the rows you are looking at.
 The table refreshes by itself every minute.
 
 ---
@@ -169,9 +170,7 @@ Every landing page uses the same fixed layout.
 - Phone, WhatsApp, email, address and social links shown across the site.
 - **Year-of-attempt choices** in the enquiry form (add or remove years).
 - Free Tests is a feature your developer switches on when the tests are ready; it is not a setting here.
-- **Admins:** add a person (give them a temporary password; they must change it at first sign-in), reset a password
-  or deactivate someone who has left.
-- **Change my password.**
+- **Admin logins** are fixed by your developer and are not managed here (see the note at the top of this guide).
 
 ---
 

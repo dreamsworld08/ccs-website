@@ -38,11 +38,12 @@ Adding a field or a new kind of content is therefore a code change: edit `src/ad
 
 ## Do this before going live
 
-1. **Set up the first admin from Script Properties.** There is **no default login anywhere in the code or the
-   repository.** `setup()` reads `FIRST_ADMIN_LOGIN` and `FIRST_ADMIN_PASSWORD` from Script Properties, creates the
-   admin, and deletes the password property ([SETUP.md](google-apps-script/SETUP.md) steps 4 and 5). Choose a long,
-   unique password. (The local development backend creates a throw-away `admin.ccs.chandigar` login in a git-ignored
-   file on first start; it only listens on your own computer.)
+1. **Admin logins are fixed in the code, and only as hashes of long random passwords.** `CONFIG.ADMINS` in `Code.gs`
+   holds each login's salted hash; nothing else about admins exists (no sheet tab, no reset, no add-admin action). The
+   password behind the shipped hash is 20 random characters (about 117 bits), shown once to the developer, so the
+   public hash cannot be cracked. **Never put a short or guessable password there**: `npm run hash` refuses anything
+   under 16 characters, and `npm run test:gs` checks the shipped hash against a list of common guesses. (The local
+   development backend has one throw-away login that only exists on your own computer.)
 2. **Own the secrets yourself.** Whoever can open the Apps Script project can read the GitHub token in Script
    Properties, and that token can push to the repository. If only you should be able to change the site, create the
    Google Sheet and script in **your own** Google account, or keep the script in your account and point it at the
@@ -61,8 +62,7 @@ Adding a field or a new kind of content is therefore a code change: edit `src/ad
    then readable by anyone, but only collaborators you add can change it. If the source must be private, use a paid
    GitHub plan, or host the built site on a service that deploys from private repositories (for example Cloudflare
    Pages or Netlify, both have free plans) and keep this repository private.
-5. Share the Google Sheet only as **Viewer** (or not at all). The Admins tab is hidden and protected, but it holds
-   password hashes and should never be editable by staff.
+5. Share the Google Sheet only as **Viewer** (or not at all). It holds the enquiries (personal data) but no logins.
 6. After the domain is attached, tick **Enforce HTTPS** in Pages settings.
 7. Never commit `dev-server/data/enquiries.json` (it is git-ignored) or any real enquiry export.
 8. Now and then run `npm run prune:uploads`: replaced or deleted pictures stay on GitHub and stay downloadable from
@@ -93,16 +93,15 @@ Adding a field or a new kind of content is therefore a code change: edit `src/ad
 | Data in URLs                      | a form submitted before the page finished loading cannot fall back to a native GET submit that would put a name and mobile number into the address bar                                                                                                                                                                                                                                                                                                           | code + `form-action 'self'`                                       |
 | Layout lock (server side)         | fields the admin screen does not have are dropped; over-long text, unknown options, `javascript:` links, pictures from other sites, `..` paths and wrong types are refused; the Free Tests switch cannot be flipped either way; a course's category cannot change; `settings/site.json` and `home/home.json` cannot be deleted or copied; every shipped content file passes the lock unchanged                                                                   | `npm run test:gs`, `npm run e2e`                                  |
 | Generated lock is current         | `google-apps-script/content-rules.json` and the block in `Code.gs` must match `src/admin/schemas.ts`                                                                                                                                                                                                                                                                                                                                                             | `npm run test:gs`, deploy workflow                                |
-| No default login                  | `Code.gs` contains no password or hash; `setup()` refuses to run without `FIRST_ADMIN_*` properties and deletes the password property afterwards                                                                                                                                                                                                                                                                                                                 | `npm run test:gs`                                                 |
+| Fixed logins                      | `Code.gs` holds only salted hashes (no password); the shipped hash matches none of a list of common passwords; the API has no add, change, reset or list-admins action; an admin removed from the code loses access at once even with a valid token                                                                                                                                                                                                              | `npm run test:gs`, `npm run e2e`                                  |
 | Pictures                          | the upload is re-encoded as WebP (this strips EXIF data such as GPS), capped in width and size; the build makes AVIF/WebP copies and never changes the original                                                                                                                                                                                                                                                                                                  | `npm run test:images`, `npm run e2e`                              |
 | Right-click                       | the context menu and image dragging are blocked on the public site, but not in text fields or the admin                                                                                                                                                                                                                                                                                                                                                          | `npm run e2e`                                                     |
-| Default credentials               | first login with a default or temporary password can only set a new one; temporary passwords given to new admins and after resets behave the same                                                                                                                                                                                                                                                                                                                | `npm run e2e`, `npm run test:gs`                                  |
 
 ## Findings
 
 | #   | Severity | Finding                                                                                                                                                                                            | Status                                                                                                                                                        |
 | --- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | High     | The default admin password hash was in a (possibly public) repo, so the default login could be tried against the public backend URL                                                                | **Fixed:** there is no default login. The first admin is created from Script Properties by `setup()`                                                          |
+| 1   | High     | The default admin password hash was in a (possibly public) repo, so the default login could be tried against the public backend URL                                                                | **Fixed:** there is no default or guessable password. The login is fixed in code as a hash of a 20-character random password, which cannot be cracked offline |
 | 2   | Medium   | Footer map and social links came straight from editable settings, so a `javascript:` URL typed by an admin would have been a live link                                                             | **Fixed:** all links from editable content go through `safeHref`                                                                                              |
 | 3   | Medium   | A form submitted before hydration would reload the page with the visitor's name and mobile in the URL                                                                                              | **Fixed:** submit guard on un-hydrated forms; mobile field limit raised so pasted `+91 98765 43210` is not truncated                                          |
 | 4   | Medium   | The admin could be framed by another site (clickjacking); GitHub Pages cannot send `frame-ancestors`                                                                                               | **Fixed** with a frame guard in the admin app. Residual: the public pages can still be framed (they hold no secrets)                                          |
@@ -119,13 +118,13 @@ Adding a field or a new kind of content is therefore a code change: edit `src/ad
 
 These are deliberate, in proportion to a static site with a contact form.
 
-- **Password hashing is salted SHA-256** (as specified). It is not a slow hash like bcrypt, which Apps Script does not
-  provide. This only matters if the Admins sheet leaks, which is why it is hidden, protected, owner-only and why the
-  sheet should be shared as Viewer at most. Passwords must be at least 8 characters with a letter and a number.
-  Use long, unique passwords.
+- **Password hashing is salted SHA-256** (Apps Script has no slow hash such as bcrypt). The hashes are in the public
+  repository, so safety rests on the passwords being long and random (the shipped one is 20 random characters). Never
+  replace it with a word, a pattern or a short password. All admins share the same safe-by-construction approach:
+  generate every login with `npm run hash -- --generate`.
 - **Sessions are stateless** (a signed token valid 12 hours, kept in `sessionStorage`). Logging out removes it from
   the browser but cannot revoke it on the server. To end every session at once, change the `SIGNING_SECRET` script
-  property. Deactivating an admin cuts their access immediately.
+  property. Removing an admin from `CONFIG.ADMINS` and deploying cuts their access immediately.
 - **The Instagram access token sits in Script Properties, like the GitHub token.** Anyone who can open the Apps Script
   project can read it, which is another reason to keep that project in an account only the owner can open. Instagram's
   API takes the token in the request URL (over HTTPS), so it appears in Google's own request logs, never in ours. The
@@ -145,7 +144,7 @@ These are deliberate, in proportion to a static site with a contact form.
   schema (see "Who can change what"). The deploy workflow still runs `npm run check` and `npm run build` first, so
   anything unexpected leaves the previous site live.
 - **All admins have the same powers**, as specified: they can read every enquiry, change every piece of content and
-  add or deactivate other admins. None of them can change layout or features.
+  see who made which change. None of them can add or change logins, layout or features.
 - **The repository is public if you use free GitHub Pages.** It contains content and code, but no secrets, no passwords and no
   enquiries. The Apps Script URL is public by design.
 - **Disabling right-click is a deterrent, not protection.** It stops casual "save image" and copying from the page.

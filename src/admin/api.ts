@@ -5,7 +5,6 @@ export type Session = {
   name: string;
   email: string;
   expiresAt: number;
-  mustChange?: boolean;
 };
 const KEY = 'ccs_admin_session';
 
@@ -44,8 +43,6 @@ export async function call<T = Record<string, unknown>>(
   if (res.code === 'auth') {
     clearSession();
     window.dispatchEvent(new Event('ccs:session-expired'));
-  } else if (res.code === 'must_change') {
-    window.dispatchEvent(new Event('ccs:must-change'));
   }
   return res;
 }

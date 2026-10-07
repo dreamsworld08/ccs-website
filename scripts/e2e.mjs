@@ -4,7 +4,6 @@
 // Covers: popup, form validation + submit, exam-update signup, landing page, filters, admin login,
 // enquiry status/notes, content CRUD, image upload, security edge cases. Cleans up what it creates.
 import { readFile, rm, readdir, writeFile } from 'node:fs/promises';
-import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import puppeteer from 'puppeteer-core';
@@ -2088,100 +2087,75 @@ console.log('\nAdmin: "live on the website" confirmation after a save');
 }
 
 /* ============================================================ admin hardening */
-console.log('\nAdmin hardening: forced password change + anti-framing');
+console.log('\nAdmin hardening: fixed logins + anti-framing');
 {
-  const ADMINS = join(ROOT, 'dev-server/data/admins.json');
-  const original = await readFile(ADMINS, 'utf8');
-  try {
-    const salt = 'e2e-salt-0123456789abcdef';
-    const list = JSON.parse(original);
-    list.push({
-      email: 'e2e.temp',
-      name: 'E2E Temp',
-      salt,
-      password_hash: createHash('sha256')
-        .update(salt + 'Temp#Pass1')
-        .digest('hex'),
-      active: true,
-      must_change: true,
+  // Logins are fixed in the code: the website cannot add, change or reset an admin.
+  for (const action of [
+    'addAdmin',
+    'changePassword',
+    'listAdmins',
+    'setAdminActive',
+    'resetAdminPassword',
+  ]) {
+    const r = await api(action, {
+      token,
+      email: 'e2e.new',
+      name: 'E2E New',
+      password: 'A-long-enough-password-12',
+      old_password: PASSWORD,
+      new_password: 'Another-long-password-34',
+      active: 'true',
     });
-    await writeFile(ADMINS, JSON.stringify(list, null, 2));
-
-    const page = await newPage(390);
-    await open(page, '/admin/');
-    await page.waitForSelector('form.login');
-    await page.type('form.login input[type=text]', 'e2e.temp');
-    await page.type('form.login input[type=password]', 'Temp#Pass1');
-    await page.click('form.login button[type=submit]');
-    await page.waitForFunction(
-      () => document.querySelector('.login h1')?.textContent === 'Choose a new password',
-    );
     check(
-      !(await page.$('.topbar')),
-      'temporary password only leads to the "choose a new password" screen',
+      r.ok === false && /Unknown action/.test(r.error ?? ''),
+      `the API has no "${action}": admins cannot be added, changed or reset from the website`,
+      JSON.stringify(r),
     );
-    await page.evaluate(() => {
-      location.hash = 'settings';
-    });
-    await sleep(300);
-    check(
-      !(await page.$('.topbar')),
-      'other admin screens stay locked until the password is changed',
-    );
-    const tok = await page.evaluate(
-      () => JSON.parse(sessionStorage.getItem('ccs_admin_session')).token,
-    );
-    check(
-      (await api('listEnquiries', { token: tok })).code === 'must_change',
-      'the API refuses every other action with that token',
-    );
-    const [oldBox, newBox, againBox] = await page.$$('form.login input[type=password]');
-    await oldBox.type('Temp#Pass1');
-    await newBox.type('Temp#Pass1');
-    await againBox.type('Temp#Pass1');
-    await page.click('form.login button[type=submit]');
-    await page.waitForSelector('.login-error');
-    check(
-      /different/.test(await page.$eval('.login-error', (e) => e.textContent)),
-      'reusing the temporary password is refused',
-    );
-    await newBox.click({ clickCount: 3 });
-    await page.keyboard.press('Backspace');
-    await againBox.click({ clickCount: 3 });
-    await page.keyboard.press('Backspace');
-    await page.$eval('form.login input[autocomplete=new-password]', (el) => {
-      el.value = '';
-    });
-    await page.$$eval('form.login input[autocomplete=new-password]', (els) =>
-      els.forEach((el) => {
-        el.value = 'Better#Pass2';
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-      }),
-    );
-    await page.click('form.login button[type=submit]');
-    await page.waitForSelector('.topbar', { timeout: 8000 });
-    ok('after choosing a new password the admin panel opens');
-    check(
-      (await api('login', { email: 'e2e.temp', password: 'Temp#Pass1' })).ok === false &&
-        (await api('login', { email: 'e2e.temp', password: 'Better#Pass2' })).ok,
-      'old temporary password no longer works; the new one does',
-    );
-    await page.close();
-
-    const host = await newPage(1000, false);
-    await host.setContent(`<iframe id="f" src="${SITE}/admin/" width="800" height="500"></iframe>`);
-    await sleep(1500);
-    const inner = host.frames().find((f) => f.url().includes('/admin/'));
-    const text = await inner.evaluate(() => document.body.innerText);
-    check(
-      /cannot be displayed inside another page/.test(text) && !/Admin login/.test(text),
-      'the admin refuses to run inside a frame (clickjacking guard)',
-      text.slice(0, 80),
-    );
-    await host.close();
-  } finally {
-    await writeFile(ADMINS, original);
   }
+  check(
+    (await api('login', { email: 'e2e.new', password: 'A-long-enough-password-12' })).ok === false,
+    'a login that is not built in cannot be made to work',
+  );
+  check(
+    (await api('login', { email: LOGIN, password: PASSWORD })).must_change === undefined,
+    'signing in never forces a password change (there is nothing to change from the website)',
+  );
+
+  const page = await newPage(1280, false);
+  await open(page, '/admin/');
+  await page.type('form.login input[type=text]', LOGIN);
+  await page.type('form.login input[type=password]', PASSWORD);
+  await page.click('form.login button[type=submit]');
+  await page.waitForSelector('.topbar');
+  await page.goto(`${SITE}/admin/#settings`);
+  await page.waitForSelector('fieldset.section');
+  const settingsUi = await page.evaluate(() => ({
+    legends: [...document.querySelectorAll('fieldset.section legend')].map((l) => l.textContent),
+    note: document.body.innerText.includes('fixed by your developer'),
+    addAdmin: !!document.querySelector('form.inline-form'),
+    passwordBoxes: document.querySelectorAll('input[type=password]').length,
+  }));
+  check(
+    settingsUi.note &&
+      !settingsUi.addAdmin &&
+      settingsUi.passwordBoxes === 0 &&
+      !settingsUi.legends.some((l) => /^Admins$|Change my password/.test(l)),
+    'Settings has no admin list, add-admin form or change-password form, only a note that logins are fixed',
+    JSON.stringify(settingsUi),
+  );
+  await page.close();
+
+  const host = await newPage(1000, false);
+  await host.setContent(`<iframe id="f" src="${SITE}/admin/" width="800" height="500"></iframe>`);
+  await sleep(1500);
+  const inner = host.frames().find((f) => f.url().includes('/admin/'));
+  const text = await inner.evaluate(() => document.body.innerText);
+  check(
+    /cannot be displayed inside another page/.test(text) && !/Admin login/.test(text),
+    'the admin refuses to run inside a frame (clickjacking guard)',
+    text.slice(0, 80),
+  );
+  await host.close();
 }
 
 /* ============================================================ security edge cases */

@@ -128,34 +128,23 @@ if (!SECRET) {
     await writeFile(SECRET_FILE, randomBytes(32).toString('hex'), { mode: 0o600 });
   SECRET = (await readFile(SECRET_FILE, 'utf8')).trim();
 }
-const ADMINS_FILE = join(DATA, 'admins.json');
 const ENQ_FILE = join(DATA, 'enquiries.json');
 
-// Local development only (this server listens on 127.0.0.1): the first start creates a throwaway admin
-// in the git-ignored admins.json. Production never has a default login, see google-apps-script/SETUP.md.
-if (!existsSync(ADMINS_FILE)) {
+// Admin logins are FIXED, exactly like CONFIG.ADMINS in google-apps-script/Code.gs: there is no admin table, no
+// password reset and no API to add an admin. Local development only (this server listens on 127.0.0.1), so one
+// throw-away login. Production has its own fixed logins and no default password, see SETUP.md.
+const DEV_ADMINS = (() => {
   const salt = randomBytes(16).toString('hex');
   const password = process.env.DEV_ADMIN_PASSWORD || 'Admin@123';
-  await writeFile(
-    ADMINS_FILE,
-    JSON.stringify(
-      [
-        {
-          email: 'admin.ccs.chandigar',
-          name: 'CCS Admin',
-          salt,
-          password_hash: createHash('sha256')
-            .update(salt + password)
-            .digest('hex'),
-          active: true,
-        },
-      ],
-      null,
-      2,
-    ),
-  );
-  console.log('[dev-api] created dev-server/data/admins.json (local login only)');
-}
+  return [
+    {
+      email: 'admin.ccs.chandigar',
+      name: 'CCS Admin',
+      salt,
+      password_hash: sha256(salt + password),
+    },
+  ];
+})();
 
 let enquiries = await readJson(ENQ_FILE, null);
 if (enquiries === null) {
@@ -237,28 +226,12 @@ function seedEnquiries() {
 }
 
 /* ------------------------------------------------------------------ admins & sessions */
-async function loadAdmins() {
-  return readJson(ADMINS_FILE, []);
-}
-const adminPublic = (a) => ({
-  email: a.email,
-  name: a.name,
-  active: a.active,
-  must_change: Boolean(a.must_change),
-});
 const failed = new Map(); // email -> [timestamps]
 function lockedOut(email) {
   const now = Date.now();
   const list = (failed.get(email) ?? []).filter((t) => now - t < 15 * 60 * 1000);
   failed.set(email, list);
   return list.length >= 5;
-}
-function passwordProblem(pw) {
-  if (typeof pw !== 'string' || pw.length < 8) return 'Password must be at least 8 characters.';
-  if (pw.length > 100) return 'Password is too long.';
-  if (!/[A-Za-z]/.test(pw) || !/\d/.test(pw))
-    return 'Password needs at least one letter and one number.';
-  return '';
 }
 function makeToken(email) {
   const payload = Buffer.from(`${email}|${Date.now() + TOKEN_TTL_MS}`).toString('base64url');
@@ -269,8 +242,7 @@ async function authenticate(token) {
   if (!payload || !sig || !safeEqual(sig, hmac(SECRET, payload))) return null;
   const [email, expiry] = Buffer.from(payload, 'base64url').toString().split('|');
   if (!email || !(Number(expiry) > Date.now())) return null;
-  const admin = (await loadAdmins()).find((a) => a.email === email && a.active);
-  return admin ?? null; // a deactivated admin loses access immediately
+  return DEV_ADMINS.find((a) => a.email === email) ?? null;
 }
 
 /* ------------------------------------------------------------------ enquiry rate limiting */
@@ -689,7 +661,7 @@ async function handle(p) {
         code: 'locked',
         error: 'Too many failed attempts. Try again in 15 minutes.',
       };
-    const admin = (await loadAdmins()).find((a) => a.email === email && a.active);
+    const admin = DEV_ADMINS.find((a) => a.email === email);
     const ok = admin && safeEqual(sha256(admin.salt + String(p.password)), admin.password_hash);
     if (!ok) {
       failed.get(email).push(Date.now());
@@ -702,7 +674,6 @@ async function handle(p) {
       name: admin.name,
       email: admin.email,
       expires_in: TOKEN_TTL_MS / 1000,
-      must_change: Boolean(admin.must_change),
     };
   }
 
@@ -711,9 +682,6 @@ async function handle(p) {
   // Everything below needs a valid session token.
   const me = await authenticate(p.token);
   if (!me) return { ok: false, code: 'auth', error: 'Session expired. Please log in again.' };
-  // A temporary or default password may only be used to choose a new one.
-  if (me.must_change && action !== 'changePassword')
-    return { ok: false, code: 'must_change', error: 'Please set a new password to continue.' };
 
   switch (action) {
     case 'listEnquiries':
@@ -815,74 +783,6 @@ async function handle(p) {
       await writeFile(file, buf);
       console.log(`[dev-api] ${me.name} uploaded /uploads/${folder}/${name}`);
       return { ok: true, path: `/uploads/${folder}/${name}`, local: true };
-    }
-
-    case 'changePassword': {
-      const admins = await loadAdmins();
-      const a = admins.find((x) => x.email === me.email);
-      if (!safeEqual(sha256(a.salt + String(p.old_password || '')), a.password_hash))
-        return { ok: false, error: 'Current password is incorrect.' };
-      const problem = passwordProblem(p.new_password);
-      if (problem) return { ok: false, error: problem };
-      if (p.new_password === p.old_password)
-        return { ok: false, error: 'Choose a password different from the current one.' };
-      a.salt = randomBytes(16).toString('hex');
-      a.password_hash = sha256(a.salt + p.new_password);
-      delete a.must_change;
-      await writeAtomic(ADMINS_FILE, JSON.stringify(admins, null, 2));
-      return { ok: true };
-    }
-
-    case 'listAdmins':
-      return { ok: true, admins: (await loadAdmins()).map(adminPublic) };
-
-    case 'addAdmin': {
-      const email = clip(p.email, 120).toLowerCase();
-      const name = clip(p.name, 60);
-      if (!/^[a-z0-9._@+-]{3,120}$/.test(email))
-        return { ok: false, error: 'Login must be 3-120 characters (letters, numbers, . _ - @).' };
-      if (name.length < 2) return { ok: false, error: 'Enter the admin’s name.' };
-      const problem = passwordProblem(p.password);
-      if (problem) return { ok: false, error: problem };
-      const admins = await loadAdmins();
-      if (admins.some((a) => a.email === email))
-        return { ok: false, error: 'An admin with this login already exists.' };
-      const salt = randomBytes(16).toString('hex');
-      admins.push({
-        email,
-        name: noFormula(name),
-        salt,
-        password_hash: sha256(salt + p.password),
-        active: true,
-        must_change: true,
-      });
-      await writeAtomic(ADMINS_FILE, JSON.stringify(admins, null, 2));
-      return { ok: true };
-    }
-
-    case 'setAdminActive': {
-      const admins = await loadAdmins();
-      const a = admins.find((x) => x.email === String(p.email || '').toLowerCase());
-      if (!a) return { ok: false, error: 'Admin not found.' };
-      const active = p.active === 'true' || p.active === true;
-      if (!active && admins.filter((x) => x.active && x.email !== a.email).length === 0)
-        return { ok: false, error: 'You cannot deactivate the last active admin.' };
-      a.active = active;
-      await writeAtomic(ADMINS_FILE, JSON.stringify(admins, null, 2));
-      return { ok: true };
-    }
-
-    case 'resetAdminPassword': {
-      const admins = await loadAdmins();
-      const a = admins.find((x) => x.email === String(p.email || '').toLowerCase());
-      if (!a) return { ok: false, error: 'Admin not found.' };
-      const problem = passwordProblem(p.password);
-      if (problem) return { ok: false, error: problem };
-      a.salt = randomBytes(16).toString('hex');
-      a.password_hash = sha256(a.salt + p.password);
-      a.must_change = true; // whoever received the temporary password must replace it
-      await writeAtomic(ADMINS_FILE, JSON.stringify(admins, null, 2));
-      return { ok: true };
     }
 
     case 'getInstagram':
