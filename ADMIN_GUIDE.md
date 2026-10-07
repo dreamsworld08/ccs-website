@@ -4,9 +4,10 @@ Open the admin at **your-website-address/admin/** and sign in with the login and
 You do not need a GitHub or Google account. Content you save goes live on the website in **about 2 minutes**
 (you will see a green message saying so).
 
-> **Your login is fixed by your developer.** You are given a username and a long password. Keep the password in a
-> password manager and never share it. It cannot be changed or reset from the admin; if it is lost, or someone new
-> needs access (or someone has left), ask your developer: they add or remove logins in the website's code.
+> **Signing in.** You are given a username and a starting password. **Change the password to your own the first time
+> you sign in** (Settings > Change my password), and keep it in a password manager. Changing it signs out everyone
+> else who was signed in with the old one. Who is allowed to sign in is fixed by your developer in the website's code:
+> if you forget your password, or someone new needs access (or someone has left), ask your developer.
 
 Sample entries are marked **Sample**. Edit or delete them before launch.
 
@@ -170,7 +171,9 @@ Every landing page uses the same fixed layout.
 - Phone, WhatsApp, email, address and social links shown across the site.
 - **Year-of-attempt choices** in the enquiry form (add or remove years).
 - Free Tests is a feature your developer switches on when the tests are ready; it is not a setting here.
-- **Admin logins** are fixed by your developer and are not managed here (see the note at the top of this guide).
+- **Change my password:** type your current password and a new one twice (at least 10 characters, with a letter and a
+  number, and not your login). Everyone else signed in with the old password is signed out; you stay signed in.
+- **Who can sign in** is fixed by your developer and is not managed here.
 
 ---
 

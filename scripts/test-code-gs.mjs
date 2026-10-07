@@ -1001,13 +1001,7 @@ check(
     .updated_by === 'Staff One',
   '"Updated by" records who made the change',
 );
-for (const action of [
-  'changePassword',
-  'listAdmins',
-  'addAdmin',
-  'setAdminActive',
-  'resetAdminPassword',
-]) {
+for (const action of ['listAdmins', 'addAdmin', 'setAdminActive', 'resetAdminPassword']) {
   const r = call({
     action,
     token: T,
@@ -1019,7 +1013,7 @@ for (const action of [
   });
   check(
     r.ok === false && /Unknown action/.test(r.error),
-    `"${action}" does not exist: logins cannot be added, changed or reset through the website`,
+    `"${action}" does not exist: nobody can be added, removed or reset through the website`,
   );
 }
 check(
@@ -1290,6 +1284,108 @@ console.log('\nInstagram live feed');
     'and clears the cached posts',
   );
   check(!everything.some((r) => r.includes('IGAA')), 'no response ever contained an access token');
+}
+
+console.log('\nchange my password (private, and it ends every other session)');
+{
+  const NEW_PW = 'Brand-new-pass-77x';
+  const RESET_PW = 'Developer-reset-pw-31q';
+  const a = call({ action: 'login', email: 'admin.ccs.chandigar', password: TEST_PW });
+  const other = call({ action: 'login', email: 'admin.ccs.chandigar', password: TEST_PW }); // a second session
+  const change = (patch, token = a.token) =>
+    call({
+      action: 'changePassword',
+      token,
+      old_password: TEST_PW,
+      new_password: NEW_PW,
+      ...patch,
+    });
+  check(!change({ old_password: 'wrong-current-pw' }).ok, 'needs the current password');
+  for (const [label, patch] of [
+    ['too short', { new_password: 'Ab1xyz' }],
+    ['all letters', { new_password: 'OnlyLettersHere' }],
+    ['all digits', { new_password: '1234567890123' }],
+    ['the same as the current one', { new_password: TEST_PW }],
+    ['containing the login', { new_password: 'admin.ccs.chandigar-9' }],
+  ]) {
+    check(!change(patch).ok, `rejects a new password that is ${label}`);
+  }
+  check(
+    call({ action: 'login', email: 'admin.ccs.chandigar', password: TEST_PW }).ok,
+    'nothing changed after the rejections',
+  );
+
+  const changed = change({});
+  check(
+    changed.ok && changed.token && changed.token !== a.token,
+    'changes the password and returns a fresh session',
+  );
+  check(
+    call({ action: 'listEnquiries', token: changed.token }).ok,
+    'the session that changed it keeps working',
+  );
+  check(
+    call({ action: 'listEnquiries', token: a.token }).code === 'auth' &&
+      call({ action: 'listEnquiries', token: other.token }).code === 'auth',
+    'every other session ends when the password changes (even the one that made the change, with its old token)',
+  );
+  check(
+    !call({ action: 'login', email: 'admin.ccs.chandigar', password: TEST_PW }).ok &&
+      call({ action: 'login', email: 'admin.ccs.chandigar', password: NEW_PW }).ok,
+    'the old password stops working and the new one works',
+  );
+  const stored = Object.entries(props).filter(([k]) => k.startsWith('ADMINPW_'));
+  check(
+    stored.length === 1 &&
+      !JSON.stringify(props).includes(NEW_PW) &&
+      /^[0-9a-f]{64}$/.test(JSON.parse(stored[0][1]).hash),
+    'it is stored in Script Properties as a salted hash, never in plain text',
+  );
+  check(
+    !JSON.stringify([...sheets.values()].map((sh) => sh.rows)).includes(NEW_PW) &&
+      !codeText.includes(NEW_PW),
+    'and it is nowhere in the sheet or the code',
+  );
+  check(
+    call({ action: 'login', email: 'staff.one', password: STAFF_PW }).ok,
+    'another admin is not affected',
+  );
+
+  // A forgotten password: the developer replaces the hash in the code, and the chosen password is ignored.
+  const kept = CONFIG.ADMINS;
+  CONFIG.ADMINS = kept.map((x) =>
+    x.login === 'admin.ccs.chandigar' ? fixed(x.login, x.name, RESET_PW) : x,
+  );
+  check(
+    !call({ action: 'login', email: 'admin.ccs.chandigar', password: NEW_PW }).ok &&
+      call({ action: 'login', email: 'admin.ccs.chandigar', password: RESET_PW }).ok,
+    'replacing the hash in the code resets a forgotten password (the chosen one is ignored)',
+  );
+  check(
+    call({ action: 'listEnquiries', token: changed.token }).code === 'auth',
+    '...and ends the sessions that were open',
+  );
+  CONFIG.ADMINS = kept;
+
+  // Wrong "current password" guesses count towards the same lock-out as sign-in.
+  const b = call({ action: 'login', email: 'staff.one', password: STAFF_PW });
+  for (let i = 0; i < 5; i++)
+    call({
+      action: 'changePassword',
+      token: b.token,
+      old_password: 'guess-' + i,
+      new_password: 'Another-pass-2024',
+    });
+  check(
+    call({
+      action: 'changePassword',
+      token: b.token,
+      old_password: STAFF_PW,
+      new_password: 'Another-pass-2024',
+    }).code === 'locked' &&
+      call({ action: 'login', email: 'staff.one', password: STAFF_PW }).code === 'locked',
+    'five wrong "current password" guesses lock that login, like five wrong sign-ins',
+  );
 }
 
 console.log(`\n${fail ? 'FAILED' : 'PASSED'}: ${pass} passed, ${fail} failed`);

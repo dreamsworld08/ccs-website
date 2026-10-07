@@ -10,12 +10,14 @@
  *
  * Public actions : submitEnquiry, login, instagramFeed
  * Admin actions  : listEnquiries, updateEnquiry, listContent, getContent, saveContent,
- *                  deleteContent, uploadFile,
+ *                  deleteContent, uploadFile, changePassword,
  *                  getInstagram, connectInstagram, saveInstagramSettings, refreshInstagram,
  *                  disconnectInstagram                     (all need a valid session token)
  *
- * Admin logins are FIXED in CONFIG.ADMINS below: only salted hashes of long random passwords, so nothing
- * needs to be set up in Script Properties and the website has no way to add, change or reset an admin.
+ * WHO may sign in is FIXED in CONFIG.ADMINS below (only salted hashes of long random passwords), so nothing needs
+ * to be set up in Script Properties and the website cannot add, remove or reset an admin. Each admin can choose
+ * their own password with "Change my password"; that choice is kept in Script Properties (private, never in the
+ * repository or the sheet).
  *
  * Secrets live ONLY in Project Settings > Script Properties (never in this file, never in the repo):
  *   GITHUB_TOKEN          fine-grained token for this repo, Contents: read/write
@@ -34,18 +36,21 @@ var CONFIG = {
   GITHUB_BRANCH: 'main',
   TIMEZONE: 'Asia/Kolkata',
   TOKEN_TTL_MS: 12 * 60 * 60 * 1000,
-  // ADMIN LOGINS ARE FIXED HERE, IN CODE. There is no admin table, no password reset and no way to add an
-  // admin from the website, so nobody can change who may sign in except by changing this file.
-  // Only the password's salted SHA-256 hash is stored. This repository is public, so a password must be long
-  // and random (16+ characters, never a word or a pattern); a hash of a short or guessable password could be
-  // cracked offline.
-  //   Add a person / change a password:  npm run hash -- --generate   (prints a ready-to-paste entry and the
-  //                                      password, shown once), add the entry here, deploy a new version.
+  // WHO CAN SIGN IN IS FIXED HERE, IN CODE. There is no admin table and no way to add, remove or reset an admin from
+  // the website, so nobody can change who may sign in except by changing this file.
+  // Only the password's salted SHA-256 hash is stored here. This repository is public, so this starting password must
+  // be long and random (16+ characters, never a word or a pattern); a hash of a short or guessable password could be
+  // cracked offline. An admin can then choose their own password in the admin panel (Settings > Change my password):
+  // that is stored privately in Script Properties and replaces this one, so this hash stops being their password.
+  //   Add a person:                      npm run hash -- --generate   (prints a ready-to-paste entry and the password,
+  //                                      shown once), add the entry here, deploy a new version.
+  //   Reset a forgotten password:        replace that person's salt and hash with a new pair and deploy. A password they
+  //                                      chose is ignored as soon as the hash here changes.
   //   Remove access:                     delete the person's entry and deploy. Their open sessions end at once.
   ADMINS: [
     { login: 'admin.ccs.chandigar', name: 'CCS Admin',
-      salt: '118699d8eea2fbce7bb0bfc75efcfa8f',
-      hash: 'c36af045feb06205411aa84983c17a335e9167b4d6181b7986f8deca898f4ef1' }
+      salt: 'd259c7acf09e5278ddbb59020ee502fb',
+      hash: '218629b410307d2c5903e1e254129f342038c3877b0523842226214f6b6c6f2f' }
   ]
 };
 
@@ -102,6 +107,7 @@ function route_(p) {
     case 'saveContent': return saveContent_(p, me);
     case 'deleteContent': return deleteContent_(p, me);
     case 'uploadFile': return uploadFile_(p, me);
+    case 'changePassword': return changePassword_(p, me);
     case 'getInstagram': return getInstagram_();
     case 'connectInstagram': return connectInstagram_(p);
     case 'saveInstagramSettings': return saveInstagramSettings_(p);
@@ -250,6 +256,14 @@ function updateEnquiry_(p, me) {
   });
 }
 
+/** Rules for a password an admin chooses (it is stored privately, never in the repository). */
+function passwordProblem_(pw) {
+  if (typeof pw !== 'string' || pw.length < 10) return 'Password must be at least 10 characters.';
+  if (pw.length > 100) return 'Password is too long.';
+  if (!/[A-Za-z]/.test(pw) || !/\d/.test(pw)) return 'Password needs at least one letter and one number.';
+  return '';
+}
+
 /* ================================ admins & auth ================================ */
 /** The fixed admin for a login (case-insensitive), or undefined. Logins exist only in CONFIG.ADMINS. */
 function findAdmin_(login) {
@@ -257,25 +271,56 @@ function findAdmin_(login) {
   return CONFIG.ADMINS.filter(function (a) { return String(a.login).toLowerCase() === wanted; })[0];
 }
 
+/** Script Properties key for the password an admin chose themselves. */
+function pwKey_(login) { return 'ADMINPW_' + sha256Hex_(String(login).toLowerCase()).slice(0, 16); }
+
+/**
+ * The salt + hash that is valid right now for a fixed admin: the password they chose (private, in Script
+ * Properties) or else the one fixed in CONFIG.ADMINS. A chosen password only counts while CONFIG.ADMINS still has the
+ * hash it was chosen against, so replacing the hash in the code also resets a forgotten password.
+ */
+function credentialFor_(admin) {
+  var raw = props_().getProperty(pwKey_(admin.login));
+  if (raw) {
+    try {
+      var chosen = JSON.parse(raw);
+      if (chosen.base === admin.hash.slice(0, 16) && /^[0-9a-f]{32}$/.test(chosen.salt) && /^[0-9a-f]{64}$/.test(chosen.hash)) return chosen;
+    } catch (e) { /* a damaged value is ignored: the fixed password applies */ }
+  }
+  return admin;
+}
+
+/** Tag of the current password, carried in session tokens: changing the password ends every other session. */
+function sessionTag_(cred) { return sha256Hex_('session:' + cred.hash).slice(0, 12); }
+
+function makeToken_(login, cred) {
+  var payload = Utilities.base64EncodeWebSafe(login + '|' + (Date.now() + CONFIG.TOKEN_TTL_MS) + '|' + sessionTag_(cred)).replace(/=+$/, '');
+  return payload + '.' + hmacHex_(payload);
+}
+
+/** Five wrong passwords (at sign-in or when changing it) lock that login for 15 minutes. */
+function failKey_(login) { return 'fail:' + sha256Hex_(String(login).toLowerCase()); }
+function isLocked_(login) { return Number(CacheService.getScriptCache().get(failKey_(login)) || 0) >= 5; }
+function noteFail_(login) {
+  var cache = CacheService.getScriptCache();
+  cache.put(failKey_(login), String(Number(cache.get(failKey_(login)) || 0) + 1), 900);
+}
+
 function login_(p) {
   var email = clip_(p.email, 120).toLowerCase();
   var password = String(p.password || '');
   if (!email || !password) return { ok: false, error: 'Enter your login and password.' };
-  var cache = CacheService.getScriptCache();
-  var failKey = 'fail:' + sha256Hex_(email);
-  var fails = Number(cache.get(failKey) || 0);
-  if (fails >= 5) return { ok: false, code: 'locked', error: 'Too many failed attempts. Try again in 15 minutes.' };
+  if (isLocked_(email)) return { ok: false, code: 'locked', error: 'Too many failed attempts. Try again in 15 minutes.' };
   var admin = findAdmin_(email);
-  var ok = admin && safeEqual_(sha256Hex_(admin.salt + password), admin.hash);
+  var cred = admin && credentialFor_(admin);
+  var ok = admin && safeEqual_(sha256Hex_(cred.salt + password), cred.hash);
   if (!ok) {
-    cache.put(failKey, String(fails + 1), 900);
+    noteFail_(email);
     return { ok: false, error: 'Incorrect login or password.' };
   }
-  cache.remove(failKey);
+  CacheService.getScriptCache().remove(failKey_(email));
   var login = String(admin.login).toLowerCase();
-  var payload = Utilities.base64EncodeWebSafe(login + '|' + (Date.now() + CONFIG.TOKEN_TTL_MS)).replace(/=+$/, '');
-  return { ok: true, token: payload + '.' + hmacHex_(payload), name: admin.name, email: login,
-           expires_in: CONFIG.TOKEN_TTL_MS / 1000 };
+  return { ok: true, token: makeToken_(login, cred), name: admin.name, email: login, expires_in: CONFIG.TOKEN_TTL_MS / 1000 };
 }
 
 function authenticate_(token) {
@@ -286,9 +331,34 @@ function authenticate_(token) {
   try {
     decoded = Utilities.newBlob(Utilities.base64DecodeWebSafe(parts[0])).getDataAsString().split('|');
   } catch (e) { return null; }
-  if (decoded.length !== 2 || !(Number(decoded[1]) > Date.now())) return null;
-  // An admin removed from CONFIG.ADMINS loses access immediately, even with an unexpired token.
-  return findAdmin_(decoded[0]) || null;
+  if (decoded.length !== 3 || !(Number(decoded[1]) > Date.now())) return null;
+  // An admin removed from CONFIG.ADMINS loses access at once, and so does every session that started before
+  // the password was last changed.
+  var admin = findAdmin_(decoded[0]);
+  if (!admin || !safeEqual_(decoded[2], sessionTag_(credentialFor_(admin)))) return null;
+  return admin;
+}
+
+function changePassword_(p, me) {
+  if (isLocked_(me.login)) return { ok: false, code: 'locked', error: 'Too many failed attempts. Try again in 15 minutes.' };
+  return withLock_(function () {
+    var cred = credentialFor_(me);
+    var old = String(p.old_password || '');
+    if (!safeEqual_(sha256Hex_(cred.salt + old), cred.hash)) {
+      noteFail_(me.login);
+      return { ok: false, error: 'Current password is incorrect.' };
+    }
+    var next = String(p.new_password || '');
+    var problem = passwordProblem_(next);
+    if (problem) return { ok: false, error: problem };
+    if (next === old) return { ok: false, error: 'Choose a password different from the current one.' };
+    if (next.toLowerCase().indexOf(String(me.login).toLowerCase()) >= 0) return { ok: false, error: 'The password must not contain your login.' };
+    var salt = randomHex_(16);
+    var chosen = { base: me.hash.slice(0, 16), salt: salt, hash: sha256Hex_(salt + next) };
+    props_().setProperty(pwKey_(me.login), JSON.stringify(chosen));
+    // This session carries on with a fresh token; every other session now has the wrong tag and ends.
+    return { ok: true, token: makeToken_(String(me.login).toLowerCase(), chosen), expires_in: CONFIG.TOKEN_TTL_MS / 1000 };
+  });
 }
 
 /* ============================ content via GitHub API ============================ */

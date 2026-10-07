@@ -135,7 +135,7 @@ const ENQ_FILE = join(DATA, 'enquiries.json');
 // throw-away login. Production has its own fixed logins and no default password, see SETUP.md.
 const DEV_ADMINS = (() => {
   const salt = randomBytes(16).toString('hex');
-  const password = process.env.DEV_ADMIN_PASSWORD || 'Admin@123';
+  const password = process.env.DEV_ADMIN_PASSWORD || 'Admin@12345';
   return [
     {
       email: 'admin.ccs.chandigar',
@@ -145,6 +145,14 @@ const DEV_ADMINS = (() => {
     },
   ];
 })();
+// A password an admin chose with "Change my password". Kept in memory only (a restart goes back to the default login),
+// and only valid while the built-in hash is unchanged, exactly like Code.gs.
+const chosenPasswords = new Map(); // email -> { base, salt, password_hash }
+const credFor = (a) => {
+  const c = chosenPasswords.get(a.email);
+  return c && c.base === a.password_hash.slice(0, 16) ? c : a;
+};
+const sessionTag = (c) => sha256(`session:${c.password_hash}`).slice(0, 12);
 
 let enquiries = await readJson(ENQ_FILE, null);
 if (enquiries === null) {
@@ -233,16 +241,27 @@ function lockedOut(email) {
   failed.set(email, list);
   return list.length >= 5;
 }
-function makeToken(email) {
-  const payload = Buffer.from(`${email}|${Date.now() + TOKEN_TTL_MS}`).toString('base64url');
+function passwordProblem(pw) {
+  if (typeof pw !== 'string' || pw.length < 10) return 'Password must be at least 10 characters.';
+  if (pw.length > 100) return 'Password is too long.';
+  if (!/[A-Za-z]/.test(pw) || !/\d/.test(pw))
+    return 'Password needs at least one letter and one number.';
+  return '';
+}
+function makeToken(email, cred) {
+  const payload = Buffer.from(`${email}|${Date.now() + TOKEN_TTL_MS}|${sessionTag(cred)}`).toString(
+    'base64url',
+  );
   return `${payload}.${hmac(SECRET, payload)}`;
 }
 async function authenticate(token) {
   const [payload, sig] = String(token || '').split('.');
   if (!payload || !sig || !safeEqual(sig, hmac(SECRET, payload))) return null;
-  const [email, expiry] = Buffer.from(payload, 'base64url').toString().split('|');
+  const [email, expiry, tag] = Buffer.from(payload, 'base64url').toString().split('|');
   if (!email || !(Number(expiry) > Date.now())) return null;
-  return DEV_ADMINS.find((a) => a.email === email) ?? null;
+  const admin = DEV_ADMINS.find((a) => a.email === email);
+  // A session that started before the password was last changed has the wrong tag and ends.
+  return admin && safeEqual(tag ?? '', sessionTag(credFor(admin))) ? admin : null;
 }
 
 /* ------------------------------------------------------------------ enquiry rate limiting */
@@ -662,7 +681,8 @@ async function handle(p) {
         error: 'Too many failed attempts. Try again in 15 minutes.',
       };
     const admin = DEV_ADMINS.find((a) => a.email === email);
-    const ok = admin && safeEqual(sha256(admin.salt + String(p.password)), admin.password_hash);
+    const cred = admin && credFor(admin);
+    const ok = admin && safeEqual(sha256(cred.salt + String(p.password)), cred.password_hash);
     if (!ok) {
       failed.get(email).push(Date.now());
       return { ok: false, error: 'Incorrect login or password.' };
@@ -670,7 +690,7 @@ async function handle(p) {
     failed.delete(email);
     return {
       ok: true,
-      token: makeToken(admin.email),
+      token: makeToken(admin.email, cred),
       name: admin.name,
       email: admin.email,
       expires_in: TOKEN_TTL_MS / 1000,
@@ -783,6 +803,36 @@ async function handle(p) {
       await writeFile(file, buf);
       console.log(`[dev-api] ${me.name} uploaded /uploads/${folder}/${name}`);
       return { ok: true, path: `/uploads/${folder}/${name}`, local: true };
+    }
+
+    case 'changePassword': {
+      if (lockedOut(me.email))
+        return {
+          ok: false,
+          code: 'locked',
+          error: 'Too many failed attempts. Try again in 15 minutes.',
+        };
+      const cred = credFor(me);
+      const old = String(p.old_password || '');
+      if (!safeEqual(sha256(cred.salt + old), cred.password_hash)) {
+        (failed.get(me.email) ?? failed.set(me.email, []).get(me.email)).push(Date.now());
+        return { ok: false, error: 'Current password is incorrect.' };
+      }
+      const next = String(p.new_password || '');
+      const problem = passwordProblem(next);
+      if (problem) return { ok: false, error: problem };
+      if (next === old)
+        return { ok: false, error: 'Choose a password different from the current one.' };
+      if (next.toLowerCase().includes(me.email.toLowerCase()))
+        return { ok: false, error: 'The password must not contain your login.' };
+      const salt = randomBytes(16).toString('hex');
+      const chosen = {
+        base: me.password_hash.slice(0, 16),
+        salt,
+        password_hash: sha256(salt + next),
+      };
+      chosenPasswords.set(me.email, chosen);
+      return { ok: true, token: makeToken(me.email, chosen), expires_in: TOKEN_TTL_MS / 1000 };
     }
 
     case 'getInstagram':

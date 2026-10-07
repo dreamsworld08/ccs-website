@@ -22,12 +22,12 @@ npm install
 npm run dev
 ```
 
-| What          | Where                                                                |
-| ------------- | -------------------------------------------------------------------- |
-| Website       | <http://localhost:4321>                                              |
-| Admin         | <http://localhost:4321/admin/>                                       |
-| Local backend | <http://localhost:8787> (stand-in for Google Apps Script, same API)  |
-| Admin login   | `admin.ccs.chandigar` / `Admin@123` (local only; see the note below) |
+| What          | Where                                                                  |
+| ------------- | ---------------------------------------------------------------------- |
+| Website       | <http://localhost:4321>                                                |
+| Admin         | <http://localhost:4321/admin/>                                         |
+| Local backend | <http://localhost:8787> (stand-in for Google Apps Script, same API)    |
+| Admin login   | `admin.ccs.chandigar` / `Admin@12345` (local only; see the note below) |
 
 `npm run dev` starts both servers. In local mode:
 
@@ -36,7 +36,7 @@ npm run dev
 - content edits and image uploads from `/admin` are written straight into `src/content/` and `public/uploads/`, so
   the site updates immediately,
 - the first start generates a signing secret in `dev-server/data/.secret` (git-ignored). The local backend has one
-  throw-away login (`admin.ccs.chandigar` / `Admin@123`, or the password in `DEV_ADMIN_PASSWORD`) that exists only on your
+  throw-away login (`admin.ccs.chandigar` / `Admin@12345`, or the password in `DEV_ADMIN_PASSWORD`) that exists only on your
   computer. **Production has its own fixed logins** in `CONFIG.ADMINS` in `google-apps-script/Code.gs` (below).
 
 Stop everything with `Ctrl+C`, then `npx astro dev stop` if the site server is still running in the background.
@@ -265,18 +265,26 @@ admin management). It cannot prove Google's runtime accepts every call, so follo
 
 ## Admins
 
-Admin logins are **fixed in the code**: the list `CONFIG.ADMINS` at the top of `google-apps-script/Code.gs` (name, login,
-salt and the salted hash of a long random password; never the password). There is no admin table, no password reset
-and no way to add an admin from the website, so nobody can change who may sign in except by changing that file.
+**Who can sign in is fixed in the code**: the list `CONFIG.ADMINS` at the top of `google-apps-script/Code.gs` (name, login,
+salt and the salted hash of a long random _starting_ password; never the password). There is no admin table and no way
+to add, remove or reset an admin from the website, so nobody can change who may sign in except by changing that file.
 
-- **Add a person or change a password:** `npm run hash -- --generate staff.name 'Staff Name'` prints a ready-to-paste
-  entry and the password (shown once: save it in a password manager and hand it over privately). Paste the entry into
-  `CONFIG.ADMINS`, copy `Code.gs` into Apps Script and **Deploy > Manage deployments > Edit > New version**.
+- **A starting password for everyone, then their own.** The password in the code works from the first sign-in. Each admin
+  then chooses their own in **Settings > Change my password** (10+ characters, a letter and a number). The chosen password
+  is stored as a salted hash in Apps Script's private Script Properties (`ADMINPW_*`), never in the repository or the
+  sheet, and from then on it replaces the starting one. Changing it also signs out every other open session.
+- **Add a person:** `npm run hash -- --generate staff.name 'Staff Name'` prints a ready-to-paste entry and a starting
+  password (shown once: save it in a password manager and hand it over privately). Paste the entry into `CONFIG.ADMINS`,
+  copy `Code.gs` into Apps Script and **Deploy > Manage deployments > Edit > New version**.
+- **Reset a forgotten password:** run the same command for that login and replace its salt and hash in `CONFIG.ADMINS`,
+  then deploy. A password chosen earlier is ignored as soon as the hash in the code changes, so the new starting password
+  works and the person changes it again.
 - **Remove access:** delete the person's entry and deploy a new version. Their open sessions end at once.
 - Every admin can change **content only**, never layout or features, and each change shows who made it ("Updated by").
-- The repository is public, so the hashes are public: only use passwords from `--generate` (20 random characters) or at
-  least 16 random characters. A short or guessable password could be cracked offline; `npm run hash` refuses them.
-- Locally the one dev login lives in `dev-server/server.mjs`.
+- The repository is public, so the _starting_ hashes are public: only use passwords from `--generate` (20 random
+  characters) or at least 16 random characters. A short or guessable one could be cracked offline; `npm run hash` refuses
+  them. Passwords an admin chooses are private, so they only need to be good, not 16+ characters.
+- Locally the one dev login lives in `dev-server/server.mjs` (a change-password there lasts until the server restarts).
 
 ## Before launch checklist
 

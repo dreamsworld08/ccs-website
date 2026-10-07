@@ -15,7 +15,7 @@ const CHROME =
   process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const API = process.env.API_URL || 'http://localhost:8787';
 const LOGIN = 'admin.ccs.chandigar';
-const PASSWORD = process.env.DEV_ADMIN_PASSWORD || 'Admin@123';
+const PASSWORD = process.env.DEV_ADMIN_PASSWORD || 'Admin@12345';
 const SHOTS = process.env.SHOTS || '';
 
 let pass = 0;
@@ -57,7 +57,7 @@ const browser = await puppeteer.launch({
 });
 const login = await api('login', { email: LOGIN, password: PASSWORD });
 check(login.ok, 'API login with the hardcoded admin');
-const token = login.token;
+let token = login.token; // refreshed after the password-change test, which ends older sessions
 const enquiryRows = async () => (await api('listEnquiries', { token })).rows;
 
 let popupMobile = '';
@@ -2087,28 +2087,20 @@ console.log('\nAdmin: "live on the website" confirmation after a save');
 }
 
 /* ============================================================ admin hardening */
-console.log('\nAdmin hardening: fixed logins + anti-framing');
+console.log('\nAdmin hardening: fixed logins, change my password, anti-framing');
 {
-  // Logins are fixed in the code: the website cannot add, change or reset an admin.
-  for (const action of [
-    'addAdmin',
-    'changePassword',
-    'listAdmins',
-    'setAdminActive',
-    'resetAdminPassword',
-  ]) {
+  // WHO can sign in is fixed in the code: the website cannot add, remove or reset an admin.
+  for (const action of ['addAdmin', 'listAdmins', 'setAdminActive', 'resetAdminPassword']) {
     const r = await api(action, {
       token,
       email: 'e2e.new',
       name: 'E2E New',
       password: 'A-long-enough-password-12',
-      old_password: PASSWORD,
-      new_password: 'Another-long-password-34',
       active: 'true',
     });
     check(
       r.ok === false && /Unknown action/.test(r.error ?? ''),
-      `the API has no "${action}": admins cannot be added, changed or reset from the website`,
+      `the API has no "${action}": nobody can be added, removed or reset from the website`,
       JSON.stringify(r),
     );
   }
@@ -2118,8 +2110,11 @@ console.log('\nAdmin hardening: fixed logins + anti-framing');
   );
   check(
     (await api('login', { email: LOGIN, password: PASSWORD })).must_change === undefined,
-    'signing in never forces a password change (there is nothing to change from the website)',
+    'signing in never forces a password change',
   );
+
+  const NEW_PW = 'Better-pass-for-e2e-88';
+  const oldSession = (await api('login', { email: LOGIN, password: PASSWORD })).token; // a second sign-in
 
   const page = await newPage(1280, false);
   await open(page, '/admin/');
@@ -2132,17 +2127,79 @@ console.log('\nAdmin hardening: fixed logins + anti-framing');
   const settingsUi = await page.evaluate(() => ({
     legends: [...document.querySelectorAll('fieldset.section legend')].map((l) => l.textContent),
     note: document.body.innerText.includes('fixed by your developer'),
-    addAdmin: !!document.querySelector('form.inline-form'),
+    addAdminForm: document.body.innerText.includes('Add an admin'),
     passwordBoxes: document.querySelectorAll('input[type=password]').length,
   }));
   check(
-    settingsUi.note &&
-      !settingsUi.addAdmin &&
-      settingsUi.passwordBoxes === 0 &&
-      !settingsUi.legends.some((l) => /^Admins$|Change my password/.test(l)),
-    'Settings has no admin list, add-admin form or change-password form, only a note that logins are fixed',
+    settingsUi.legends.includes('Change my password') &&
+      settingsUi.passwordBoxes === 3 &&
+      settingsUi.note &&
+      !settingsUi.addAdminForm &&
+      !settingsUi.legends.includes('Admins'),
+    'Settings has "Change my password" and a note that who can sign in is fixed, but no admin list or add-admin form',
     JSON.stringify(settingsUi),
   );
+
+  // a wrong current password and a weak new one are refused on screen
+  const [cur, next, again] = await page.$$('fieldset.section input[type=password]');
+  await cur.type('not-my-password-1');
+  await next.type(NEW_PW);
+  await again.type(NEW_PW);
+  await page.click('fieldset.section form.inline-form button[type=submit]');
+  await page.waitForFunction(() =>
+    [...document.querySelectorAll('.toast')].some((t) =>
+      /Current password is incorrect/.test(t.textContent),
+    ),
+  );
+  ok('a wrong current password is refused on screen');
+  check(
+    (await api('login', { email: LOGIN, password: PASSWORD })).ok,
+    'nothing changed after the refused attempt',
+  );
+
+  // the real change, through the screen
+  // (a triple-click does not select the text of a password box, so clear it explicitly)
+  await cur.evaluate((el) => {
+    el.value = '';
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await cur.type(PASSWORD);
+  await page.click('fieldset.section form.inline-form button[type=submit]');
+  await page.waitForFunction(() =>
+    [...document.querySelectorAll('.toast')].some((t) => /Password changed/.test(t.textContent)),
+  );
+  ok('changing the password through the screen works');
+  await page.goto(`${SITE}/admin/#enquiries`);
+  await page.waitForSelector('table.table-enq tbody tr', { timeout: 15000 });
+  ok('the browser that changed it stays signed in (fresh session)');
+
+  check(
+    (await api('login', { email: LOGIN, password: PASSWORD })).ok === false &&
+      (await api('login', { email: LOGIN, password: NEW_PW })).ok,
+    'the old password stops working and the new one works',
+  );
+  check(
+    (await api('listEnquiries', { token: oldSession })).code === 'auth' &&
+      (await api('listEnquiries', { token })).code === 'auth',
+    'every other session that was signed in with the old password is signed out',
+  );
+  const weak = (await api('login', { email: LOGIN, password: NEW_PW })).token;
+  check(
+    (await api('changePassword', { token: weak, old_password: NEW_PW, new_password: 'short1' }))
+      .ok === false,
+    'a weak new password is refused by the server',
+  );
+  // put the default back so the rest of this run (and the next run) can sign in as before
+  const restored = await api('changePassword', {
+    token: weak,
+    old_password: NEW_PW,
+    new_password: PASSWORD,
+  });
+  check(
+    restored.ok && !!restored.token,
+    'the default password is restored for the rest of the run',
+  );
+  token = restored.token;
   await page.close();
 
   const host = await newPage(1000, false);
