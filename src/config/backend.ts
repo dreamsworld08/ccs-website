@@ -9,7 +9,8 @@
  *   Apps Script backend that speaks exactly the same API, so no URL is needed.
  *   To test a production build against it, run `npm run build:local`.
  */
-const PRODUCTION_URL = 'PASTE_APPS_SCRIPT_WEB_APP_URL_HERE';
+const PRODUCTION_URL =
+  'https://script.google.com/macros/s/AKfycbyCCy2CNFOTQDvGdaJK39zESdvxRTy93LZ7e2iBK3MDfkdX1wFZ6P1zmIq7VMMf5Jm7/exec';
 const LOCAL_URL = 'http://localhost:8787';
 
 export const BACKEND_URL: string =
