@@ -1,0 +1,85 @@
+---
+import Base from '../layouts/Base.astro';
+import PageHeader from '../components/PageHeader.astro';
+import ResultCard from '../components/ResultCard.astro';
+import FilterChips from '../components/FilterChips.astro';
+import ReelsCarousel from '../components/ReelsCarousel.astro';
+import { getResults } from '../lib/site';
+
+const results = await getResults();
+const exams = [...new Set(results.map((r) => r.data.exam).filter(Boolean))];
+const years = [...new Set(results.map((r) => r.data.exam_year).filter(Boolean))].sort().reverse();
+---
+
+<Base
+  title="Results"
+  description="Selections and top ranks from Chandigarh Civil Services students in UPSC CSE, Punjab PCS and Punjab one-day exams."
+>
+  <PageHeader
+    kicker="Results"
+    title="Our selections"
+    text="Real ranks from real aspirants across UPSC CSE, Punjab PCS and one-day exams."
+    tone="lavender"
+  />
+
+  <section
+    class="panel bg-white border border-line"
+    data-list-filter
+    data-accept-q
+    data-page-size="12"
+  >
+    <div class="container-x section-pad">
+      <div class="mb-8 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        {exams.length > 1 && (
+          <FilterChips field="exam" options={exams} label="Filter results by exam" />
+        )}
+        {years.length > 1 && (
+          <div class="w-full sm:w-52 shrink-0">
+            <label class="field-label" for="year-filter">
+              Year
+            </label>
+            <select id="year-filter" class="input" data-filter-select="year">
+              <option value="">All years</option>
+              {years.map((y) => (
+                <option value={y}>{y}</option>
+              ))}
+            </select>
+          </div>
+        )}
+      </div>
+      <p
+        class="mb-5 flex flex-wrap items-center gap-3 rounded-[14px] bg-sky px-4 py-3 text-[15px]"
+        data-q-notice
+        hidden
+      >
+        <span>
+          Showing results for “<strong data-q-text></strong>”
+        </span>
+        <button type="button" class="btn btn-white btn-sm" data-q-clear>
+          Show all results
+        </button>
+      </p>
+      <p class="mono mb-5 text-[13px] text-muted" data-count aria-live="polite"></p>
+      <div class="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4 lg:grid-cols-4">
+        {results.map((r) => (
+          <ResultCard result={r} level={2} />
+        ))}
+      </div>
+      <p class="mt-8 text-muted" data-empty hidden>
+        No results match these filters.
+      </p>
+      <div class="mt-10 text-center">
+        <button type="button" class="btn btn-dark" data-more hidden>
+          Load more
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <ReelsCarousel />
+</Base>
+
+<script>
+  import { initListFilters } from '../scripts/list-filter';
+  initListFilters();
+</script>

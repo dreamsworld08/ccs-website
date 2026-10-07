@@ -1,0 +1,52 @@
+---
+import Img from './Img.astro';
+interface Props {
+  result: {
+    id: string;
+    data: {
+      student_name: string;
+      exam: string;
+      exam_year: string;
+      rank_label: string;
+      photo: string;
+      quote: string;
+    };
+  };
+  level?: 2 | 3;
+}
+const { result, level = 3 } = Astro.props;
+const Heading = `h${level}` as 'h2' | 'h3';
+const { student_name, exam, exam_year, rank_label, photo } = result.data;
+---
+
+<article
+  class="card h-full"
+  data-item
+  data-exam={exam}
+  data-year={exam_year}
+  data-search={`${student_name} ${exam} ${exam_year} ${rank_label}`.toLowerCase()}
+>
+  <div class="p-1.5 pb-0 md:p-2 md:pb-0">
+    <div class="relative aspect-square overflow-hidden rounded-[13px] bg-panel md:aspect-[4/5] md:rounded-[20px]">
+      {photo && (
+        <Img
+          src={photo}
+          alt={`${student_name}, ${rank_label} in ${exam} ${exam_year}`}
+          width={600}
+          height={750}
+          sizes="(min-width: 1024px) 290px, (min-width: 768px) 30vw, 47vw"
+          class="absolute inset-0 h-full w-full object-cover object-top"
+        />
+      )}
+      <span class="mono absolute left-2 top-2 rounded-full bg-primary px-2.5 py-1 text-[12px] font-medium text-white md:left-3 md:top-3 md:px-3.5 md:py-1.5 md:text-[13px]">
+        {rank_label}
+      </span>
+    </div>
+  </div>
+  <div class="p-3 md:p-5">
+    <Heading class="h3 !text-[16px] !leading-[1.1] md:!text-[24px]">{student_name}</Heading>
+    <p class="mono mt-1 text-[11px] uppercase tracking-wide text-muted md:mt-2 md:text-[13px]">
+      {exam} · {exam_year}
+    </p>
+  </div>
+</article>

@@ -1,0 +1,12 @@
+{
+  "student_name": "Divya Thakur",
+  "exam": "UPSC CSE",
+  "exam_year": "2024",
+  "rank_label": "AIR 301",
+  "photo": "/uploads/placeholders/person-4.svg",
+  "quote": "Joined for the optional, stayed for the mentorship.",
+  "show_on_home": false,
+  "order": 12,
+  "published": true,
+  "dummy": true
+}

@@ -1,0 +1,12 @@
+{
+  "student_name": "Navjot Kaur",
+  "exam": "Excise & Taxation",
+  "exam_year": "2025",
+  "rank_label": "Rank 04",
+  "photo": "/uploads/placeholders/person-2.svg",
+  "quote": "Law and tax modules were crisp and to the point.",
+  "show_on_home": false,
+  "order": 10,
+  "published": true,
+  "dummy": true
+}

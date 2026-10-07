@@ -1,0 +1,86 @@
+---
+import Base from '../layouts/Base.astro';
+import PageHeader from '../components/PageHeader.astro';
+import CourseCard from '../components/CourseCard.astro';
+import FilterChips from '../components/FilterChips.astro';
+import CtaPanel from '../components/CtaPanel.astro';
+import Icon from '../components/Icon.astro';
+import { getCourses, getSettings } from '../lib/site';
+
+const [courses, settings] = await Promise.all([getCourses(), getSettings()]);
+const categories = [...new Set(courses.map((c) => c.data.category))];
+const included = [
+  { icon: 'notebook-pen', text: 'Printed + digital notes' },
+  { icon: 'clipboard-check', text: 'Weekly tests with review' },
+  { icon: 'pen-line', text: 'Answer writing practice' },
+  { icon: 'users', text: 'Personal mentor access' },
+  { icon: 'headphones', text: 'Doubt-clearing sessions' },
+  { icon: 'video', text: 'Recorded classes for revision' },
+];
+---
+
+<Base
+  title="Courses"
+  description="UPSC CSE, Punjab PCS and Punjab one-day exam courses at Chandigarh Civil Services. See courses and enquire for free counselling."
+>
+  <PageHeader
+    kicker="Courses"
+    title="Pick your course"
+    text="Structured programmes for UPSC CSE, Punjab PCS and every major Punjab one-day exam. Tap Enquire and we will call you."
+  />
+
+  <section class="panel bg-white border border-line" data-list-filter>
+    <div class="container-x section-pad">
+      {categories.length > 1 && (
+        <div class="mb-8">
+          <FilterChips
+            field="category"
+            options={categories}
+            label="Filter courses by exam category"
+          />
+        </div>
+      )}
+      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {courses.map((c) => (
+          <CourseCard course={c} level={2} />
+        ))}
+      </div>
+      <p class="mt-8 text-muted" data-empty hidden>
+        No courses in this category yet.
+      </p>
+    </div>
+  </section>
+
+  <section class="panel bg-sky">
+    <div class="container-x py-10 md:py-14">
+      <h2 class="h3 mb-6 !text-[24px] md:!text-[28px]">Included in every course</h2>
+      <ul class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {included.map((i) => (
+          <li class="flex items-center gap-3 rounded-[20px] bg-white p-4">
+            <span class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-sky">
+              <Icon name={i.icon} size={20} />
+            </span>
+            <span class="font-medium">{i.text}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  </section>
+
+  <CtaPanel
+    headline="Not sure which course fits?"
+    subtext="Tell us your exam and attempt year. A mentor will suggest the right course and answer your questions."
+    points={[
+      'Free counselling, no obligation',
+      'Course advice based on your attempt year',
+      'Scholarship and fee information',
+    ]}
+    settings={settings}
+    idPrefix="courses-cta"
+  />
+</Base>
+
+<script>
+  import { initListFilters } from '../scripts/list-filter';
+  initListFilters();
+</script>

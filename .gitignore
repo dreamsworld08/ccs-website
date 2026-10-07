@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.astro/
+.env
+.env.local
+.DS_Store
+*.log
+# Local dev backend: enquiries captured while developing (never commit real leads), the local-only
+# admin login it creates on first start, and its signing secret
+dev-server/data/enquiries.json
+dev-server/data/admins.json
+dev-server/data/.secret

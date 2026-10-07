@@ -1,0 +1,12 @@
+{
+  "student_name": "Karan Mehta",
+  "exam": "UPSC CSE",
+  "exam_year": "2025",
+  "rank_label": "AIR 245",
+  "photo": "/uploads/placeholders/person-3.svg",
+  "quote": "Clear strategy, honest feedback, zero noise.",
+  "show_on_home": true,
+  "order": 3,
+  "published": true,
+  "dummy": true
+}

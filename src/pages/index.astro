@@ -1,0 +1,53 @@
+---
+import Base from '../layouts/Base.astro';
+import Hero from '../components/home/Hero.astro';
+import Founder from '../components/home/Founder.astro';
+import FeaturedCourses from '../components/home/FeaturedCourses.astro';
+import ResourcesCarousel from '../components/home/ResourcesCarousel.astro';
+import ReelsCarousel from '../components/ReelsCarousel.astro';
+import ExamUpdatesStrip from '../components/home/ExamUpdatesStrip.astro';
+import Toppers from '../components/home/Toppers.astro';
+import CtaPanel from '../components/CtaPanel.astro';
+import { getHome, getSettings, absoluteUrl } from '../lib/site';
+
+const [home, settings] = await Promise.all([getHome(), getSettings()]);
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'EducationalOrganization',
+  name: 'Chandigarh Civil Services',
+  url: absoluteUrl('/', Astro.site),
+  logo: absoluteUrl('/logo.svg', Astro.site),
+  image: absoluteUrl(home.hero_poster || '/og-default.png', Astro.site),
+  telephone: settings.phone,
+  email: settings.email,
+  address: {
+    '@type': 'PostalAddress',
+    streetAddress: settings.address,
+    addressLocality: 'Chandigarh',
+    addressCountry: 'IN',
+  },
+  sameAs: [settings.instagram_url, settings.youtube_url, settings.telegram_url].filter(Boolean),
+};
+---
+
+<Base
+  title="Chandigarh Civil Services | UPSC, Punjab PCS & Punjab Exams Coaching"
+  jsonLd={jsonLd}
+  image={home.hero_poster ? '/og-default.png' : undefined}
+>
+  <Hero home={home} />
+  <Founder home={home} />
+  <FeaturedCourses home={home} />
+  <ResourcesCarousel />
+  <ReelsCarousel />
+  <ExamUpdatesStrip settings={settings} />
+  <Toppers home={home} />
+  <CtaPanel
+    headline={home.cta_headline}
+    subtext={home.cta_subtext}
+    points={home.cta_points}
+    settings={settings}
+    idPrefix="home-cta"
+  />
+</Base>

@@ -1,0 +1,69 @@
+---
+import Base from '../layouts/Base.astro';
+import PageHeader from '../components/PageHeader.astro';
+import TeacherCard from '../components/TeacherCard.astro';
+import Icon from '../components/Icon.astro';
+import { getTeachers } from '../lib/site';
+
+const teachers = await getTeachers();
+const points = [
+  {
+    icon: 'target',
+    title: 'Strategy before syllabus',
+    text: 'Every student gets a written plan for their attempt year before the first class.',
+  },
+  {
+    icon: 'pen-line',
+    title: 'Write, get reviewed, repeat',
+    text: 'Daily answer writing with mentor feedback, not just lectures to watch.',
+  },
+  {
+    icon: 'clipboard-check',
+    title: 'Weekly tests, honest scores',
+    text: 'Regular tests and one-to-one reviews keep preparation measurable.',
+  },
+];
+---
+
+<Base
+  title="About the Teachers"
+  description="Meet the mentors at Chandigarh Civil Services: experienced faculty for UPSC CSE, Punjab PCS and Punjab one-day exams."
+>
+  <PageHeader
+    kicker="Our faculty"
+    title="About the teachers"
+    text="Mentors who have taught, tested and guided thousands of aspirants through UPSC, PCS and Punjab one-day exams."
+  />
+
+  <section class="panel bg-white border border-line">
+    <div class="container-x section-pad">
+      {teachers.length ? (
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {teachers.map((t) => (
+            <TeacherCard teacher={t} level={2} />
+          ))}
+        </div>
+      ) : (
+        <p class="text-muted">Our faculty profiles are coming soon.</p>
+      )}
+    </div>
+  </section>
+
+  <section class="panel on-dark bg-ink text-white">
+    <div class="container-x section-pad">
+      <h2 class="h2 mb-6 md:mb-14">How we teach</h2>
+      <div class="grid gap-3 md:grid-cols-3 md:gap-4">
+        {points.map((p, i) => (
+          <div class="rounded-[18px] border border-white/15 bg-white/[0.06] p-4 md:rounded-[28px] md:p-8">
+            <span class="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-full bg-white text-ink md:mb-8 md:h-12 md:w-12">
+              <Icon name={p.icon} size={22} />
+            </span>
+            <p class="mono mb-1.5 text-[13px] text-white/60 md:mb-3">0{i + 1}</p>
+            <h3 class="h3 mb-1.5 !text-[18px] md:mb-3 md:!text-[24px]">{p.title}</h3>
+            <p class="text-[14px] text-white/75 md:text-[15px]">{p.text}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+</Base>

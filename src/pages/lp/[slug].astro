@@ -1,0 +1,186 @@
+---
+import Base from '../../layouts/Base.astro';
+import Icon from '../../components/Icon.astro';
+import ResultCard from '../../components/ResultCard.astro';
+import EnquiryForm from '../../islands/EnquiryForm';
+import Countdown from '../../islands/Countdown';
+import { getLandingPages, getResults, getSettings, withBase, telLink } from '../../lib/site';
+
+/** Only PUBLISHED landing pages are built. Unpublished ones do not exist in the site or the sitemap. */
+export async function getStaticPaths() {
+  const pages = await getLandingPages();
+  return pages.map((p) => ({ params: { slug: p.data.slug }, props: { page: p.data } }));
+}
+const { page } = Astro.props;
+const [settings, results] = await Promise.all([getSettings(), getResults()]);
+const toppers = page.show_toppers ? results.filter((r) => r.data.show_on_home).slice(0, 4) : [];
+const bullets = page.hero_bullets.slice(0, 3);
+const benefits = page.benefits.slice(0, 3);
+const faqs = page.faqs.slice(0, 8);
+const tones = ['bg-mint', 'bg-lavender', 'bg-peach'];
+---
+
+<Base
+  title={page.seo_title || page.hero_headline}
+  description={page.seo_description || page.hero_subtext}
+  landing
+>
+  <header slot="header" class="bg-white">
+    <div class="container-x flex h-16 items-center justify-between gap-3">
+      <a href={withBase('/')} aria-label="Chandigarh Civil Services">
+        <img
+          src={withBase('/logo.svg')}
+          alt="Chandigarh Civil Services"
+          width="150"
+          height="36"
+          class="h-8 w-auto md:h-9"
+        />
+      </a>
+      <a href={telLink(settings.phone)} class="btn btn-secondary btn-sm !min-h-11">
+        <Icon name="phone" size={16} /> <span class="mono">{settings.phone}</span>
+      </a>
+    </div>
+  </header>
+
+  <section class="panel on-dark text-white bg-[linear-gradient(150deg,#0A1B5C_0%,#0042F6_58%,#6047FF_130%)]">
+    <div class="container-x grid items-center gap-8 py-10 md:py-20 lg:grid-cols-[1.15fr_1fr] lg:gap-14">
+      <div class="min-w-0">
+        {page.hero_kicker && <span class="chip chip-kicker mb-5">{page.hero_kicker}</span>}
+        <h1 class="display">{page.hero_headline}</h1>
+        {page.hero_subtext && (
+          <p class="mt-5 max-w-[600px] text-[16px] text-white/85 md:text-[19px]">
+            {page.hero_subtext}
+          </p>
+        )}
+        {bullets.length > 0 && (
+          <ul class="mt-6 grid gap-3">
+            {bullets.map((b) => (
+              <li class="flex items-start gap-3 text-[16px] md:text-[17px]">
+                <span class="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-saffron text-ink">
+                  <Icon name="check" size={14} />
+                </span>
+                {b}
+              </li>
+            ))}
+          </ul>
+        )}
+        {page.countdown_date && (
+          <div class="mt-7">
+            <Countdown client:visible date={page.countdown_date} />
+          </div>
+        )}
+      </div>
+      <div
+        id="enquire"
+        class="min-w-0 scroll-mt-4 rounded-[28px] bg-white p-5 text-ink shadow-[0_30px_80px_-30px_rgb(0_0_0/0.6)] md:p-8"
+      >
+        <p class="h3 mb-1 !text-[26px]">{page.cta_button_label || 'Book free counselling'}</p>
+        <p class="mb-5 text-[15px] text-muted">We call within 24 hours. No obligation.</p>
+        <EnquiryForm
+          client:load
+          idPrefix="lp"
+          years={settings.attempt_years}
+          whatsapp={settings.whatsapp_number}
+          phone={settings.phone}
+          defaultExam={page.default_exam}
+          source={`lp:${page.slug}`}
+          submitLabel={page.cta_button_label || 'Book free counselling'}
+        />
+      </div>
+    </div>
+  </section>
+
+  {benefits.length > 0 && (
+    <section class="panel bg-white border border-line">
+      <div class="container-x section-pad">
+        <div class="grid gap-4 md:grid-cols-3">
+          {benefits.map((b, i) => (
+            <div
+              class:list={['rounded-[18px] p-4 md:rounded-[28px] md:p-8', tones[i % tones.length]]}
+            >
+              <p class="mono mb-2 text-[13px] text-muted md:mb-6">0{i + 1}</p>
+              <h2 class="h3 mb-1.5 !text-[20px] md:mb-3 md:!text-[26px]">{b.title}</h2>
+              <p class="text-[14px] text-muted md:text-[16px]">{b.text}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  )}
+
+  {toppers.length > 0 && (
+    <section class="panel bg-panel">
+      <div class="container-x section-pad">
+        <h2 class="h2 mb-8 md:mb-12">Our toppers</h2>
+        <div class="grid grid-cols-2 gap-3 md:gap-4 lg:grid-cols-4">
+          {toppers.map((r) => (
+            <ResultCard result={r} />
+          ))}
+        </div>
+      </div>
+    </section>
+  )}
+
+  {faqs.length > 0 && (
+    <section class="panel bg-white border border-line">
+      <div class="container-x section-pad grid gap-8 lg:grid-cols-[1fr_1.6fr] lg:gap-14">
+        <h2 class="h2">Questions, answered</h2>
+        <div class="grid gap-3">
+          {faqs.map((f) => (
+            <details class="group rounded-[20px] bg-panel p-5 md:p-6">
+              <summary class="flex cursor-pointer list-none items-center justify-between gap-4 text-[17px] font-medium [&::-webkit-details-marker]:hidden">
+                {f.q}
+                <span class="shrink-0 transition-transform group-open:rotate-180">
+                  <Icon name="chevron-down" size={20} />
+                </span>
+              </summary>
+              <p class="mt-3 text-muted">{f.a}</p>
+            </details>
+          ))}
+        </div>
+      </div>
+    </section>
+  )}
+
+  <section class="panel on-dark bg-ink text-white">
+    <div class="container-x flex flex-col items-start gap-6 py-12 md:flex-row md:items-center md:justify-between md:py-16">
+      {page.cta_headline && <h2 class="h2 max-w-[760px]">{page.cta_headline}</h2>}
+      <a href="#enquire" class="btn btn-white shrink-0">
+        {page.cta_button_label || 'Book free counselling'} <Icon name="arrow-right" size={18} />
+      </a>
+    </div>
+  </section>
+
+  <footer slot="footer" class="px-2 pb-24 md:pb-4">
+    <div class="container-x flex flex-col gap-2 py-4 text-[14px] text-muted sm:flex-row sm:items-center sm:justify-between">
+      <p>© {new Date().getFullYear()} Chandigarh Civil Services</p>
+      <a class="underline underline-offset-4 hover:text-ink" href={withBase('/privacy-policy')}>
+        Privacy Policy
+      </a>
+    </div>
+  </footer>
+
+  <div
+    id="lp-bar"
+    class="fixed inset-x-0 bottom-0 z-40 grid grid-cols-2 gap-2 border-t border-line bg-white p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:hidden"
+  >
+    <a href={telLink(settings.phone)} class="btn btn-secondary">
+      Call now
+    </a>
+    <a href="#enquire" class="btn btn-primary">
+      Enquire
+    </a>
+  </div>
+</Base>
+
+<script>
+  // The sticky Call/Enquire bar exists to bring people to the form. Once the form is on screen it
+  // would only cover the Submit button, so it hides itself.
+  const bar = document.getElementById('lp-bar');
+  const form = document.getElementById('enquire');
+  if (bar && form && 'IntersectionObserver' in window) {
+    new IntersectionObserver(([entry]) => (bar.hidden = entry.isIntersecting), {
+      threshold: 0.12,
+    }).observe(form);
+  }
+</script>

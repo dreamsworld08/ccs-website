@@ -1,0 +1,619 @@
+{
+  "settings": {
+    "files": [
+      "site"
+    ],
+    "fields": {
+      "phone": {
+        "label": "Phone number (shown on the site)",
+        "type": "text",
+        "required": true,
+        "max": 20
+      },
+      "whatsapp_number": {
+        "label": "WhatsApp number (digits with country code)",
+        "type": "text",
+        "required": true,
+        "max": 15
+      },
+      "email": {
+        "label": "Email",
+        "type": "text",
+        "required": true,
+        "max": 80
+      },
+      "address": {
+        "label": "Address",
+        "type": "textarea",
+        "required": true,
+        "max": 200
+      },
+      "map_url": {
+        "label": "Google Maps link",
+        "type": "url"
+      },
+      "youtube_url": {
+        "label": "YouTube channel link",
+        "type": "url"
+      },
+      "instagram_url": {
+        "label": "Instagram link",
+        "type": "url"
+      },
+      "telegram_url": {
+        "label": "Telegram link",
+        "type": "url"
+      },
+      "attempt_years": {
+        "label": "Year-of-attempt choices in the enquiry form",
+        "type": "strings",
+        "max": 4,
+        "maxItems": 8,
+        "pattern": "^\\d{4}$",
+        "patternHelp": "Each year must be four digits, for example 2027."
+      }
+    },
+    "system": [],
+    "developerOnly": {
+      "show_free_tests": false
+    }
+  },
+  "home": {
+    "files": [
+      "home"
+    ],
+    "fields": {
+      "hero_video_url": {
+        "label": "Video link",
+        "type": "video"
+      },
+      "hero_poster": {
+        "label": "Poster image (shown before the video loads, and on phones)",
+        "type": "image"
+      },
+      "hero_kicker": {
+        "label": "Welcome line (small text above the headline)",
+        "type": "text",
+        "max": 60
+      },
+      "hero_headline": {
+        "label": "Headline",
+        "type": "text",
+        "required": true,
+        "max": 70
+      },
+      "hero_subtext": {
+        "label": "Sub-text",
+        "type": "textarea",
+        "max": 200
+      },
+      "hero_btn1_label": {
+        "label": "Button 1 label (opens the enquiry form)",
+        "type": "text",
+        "required": true,
+        "max": 30
+      },
+      "hero_btn2_label": {
+        "label": "Button 2 label",
+        "type": "text",
+        "required": true,
+        "max": 30
+      },
+      "hero_btn2_link": {
+        "label": "Button 2 link",
+        "type": "url",
+        "required": true
+      },
+      "hero_search_placeholder": {
+        "label": "Search bar hint text",
+        "type": "text",
+        "max": 60
+      },
+      "hero_search_popular": {
+        "label": "Popular searches (up to 6)",
+        "type": "strings",
+        "max": 24,
+        "maxItems": 6
+      },
+      "stats": {
+        "label": "Four stat tiles (shown under the search bar)",
+        "type": "objects",
+        "maxItems": 4,
+        "sub": [
+          {
+            "key": "value",
+            "label": "Value",
+            "type": "text",
+            "max": 10
+          },
+          {
+            "key": "label",
+            "label": "Label",
+            "type": "text",
+            "max": 40
+          }
+        ]
+      },
+      "founder_photo": {
+        "label": "Founder photo",
+        "type": "image"
+      },
+      "founder_name": {
+        "label": "Name",
+        "type": "text",
+        "required": true,
+        "max": 50
+      },
+      "founder_designation": {
+        "label": "Designation",
+        "type": "text",
+        "max": 50
+      },
+      "founder_kicker": {
+        "label": "Small label",
+        "type": "text",
+        "max": 40
+      },
+      "founder_headline": {
+        "label": "Headline",
+        "type": "text",
+        "required": true,
+        "max": 60
+      },
+      "founder_message": {
+        "label": "Message",
+        "type": "textarea",
+        "max": 600
+      },
+      "featured_course_ids": {
+        "label": "Three courses shown on the Home page",
+        "type": "coursePick",
+        "maxItems": 3
+      },
+      "cta_headline": {
+        "label": "Headline",
+        "type": "text",
+        "required": true,
+        "max": 70
+      },
+      "cta_subtext": {
+        "label": "Sub-text",
+        "type": "textarea",
+        "max": 160
+      },
+      "cta_points": {
+        "label": "Three bullet points",
+        "type": "strings",
+        "max": 90,
+        "maxItems": 3
+      }
+    },
+    "system": []
+  },
+  "landing-pages": {
+    "fields": {
+      "slug": {
+        "label": "Page address",
+        "type": "text",
+        "required": true,
+        "max": 60,
+        "addOnly": true,
+        "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+        "patternHelp": "Page address may only use lowercase letters, numbers and single hyphens."
+      },
+      "internal_name": {
+        "label": "Internal name",
+        "type": "text",
+        "required": true,
+        "max": 80
+      },
+      "published": {
+        "label": "Published (unchecked = removed from the live site and sitemap)",
+        "type": "checkbox"
+      },
+      "show_on_main_site": {
+        "label": "Show link in the footer “Programs” column",
+        "type": "checkbox"
+      },
+      "seo_title": {
+        "label": "Browser / Google title",
+        "type": "text",
+        "max": 70
+      },
+      "seo_description": {
+        "label": "Google description",
+        "type": "textarea",
+        "max": 160
+      },
+      "hero_kicker": {
+        "label": "Small label above the headline",
+        "type": "text",
+        "max": 50
+      },
+      "hero_headline": {
+        "label": "Headline",
+        "type": "text",
+        "required": true,
+        "max": 70
+      },
+      "hero_subtext": {
+        "label": "Sub-text",
+        "type": "textarea",
+        "max": 220
+      },
+      "hero_bullets": {
+        "label": "Tick points (up to 3)",
+        "type": "strings",
+        "max": 80,
+        "maxItems": 3
+      },
+      "countdown_date": {
+        "label": "Countdown to (optional)",
+        "type": "datetime"
+      },
+      "default_exam": {
+        "label": "Exam pre-selected in the form",
+        "type": "select",
+        "required": true,
+        "options": [
+          "UPSC CSE",
+          "Punjab PSC (PCS)",
+          "Punjab One Day Exams",
+          "Other"
+        ]
+      },
+      "benefits": {
+        "label": "Benefits (3 blocks)",
+        "type": "objects",
+        "maxItems": 3,
+        "sub": [
+          {
+            "key": "title",
+            "label": "Title",
+            "type": "text",
+            "max": 40
+          },
+          {
+            "key": "text",
+            "label": "One line",
+            "type": "text",
+            "max": 100
+          }
+        ]
+      },
+      "show_toppers": {
+        "label": "Show the toppers strip",
+        "type": "checkbox"
+      },
+      "faqs": {
+        "label": "FAQs (up to 8)",
+        "type": "objects",
+        "maxItems": 8,
+        "sub": [
+          {
+            "key": "q",
+            "label": "Question",
+            "type": "text",
+            "max": 120
+          },
+          {
+            "key": "a",
+            "label": "Answer",
+            "type": "textarea",
+            "max": 400
+          }
+        ]
+      },
+      "cta_headline": {
+        "label": "Closing headline",
+        "type": "text",
+        "max": 80
+      },
+      "cta_button_label": {
+        "label": "Button label",
+        "type": "text",
+        "max": 30
+      }
+    },
+    "system": [
+      "dummy"
+    ]
+  },
+  "courses": {
+    "fields": {
+      "thumbnail": {
+        "label": "Thumbnail",
+        "type": "image"
+      },
+      "name": {
+        "label": "Course name",
+        "type": "text",
+        "required": true,
+        "max": 70
+      },
+      "price": {
+        "label": "Price",
+        "type": "text",
+        "required": true,
+        "max": 20
+      },
+      "category": {
+        "label": "Category",
+        "type": "select",
+        "required": true,
+        "options": [
+          "UPSC CSE",
+          "Punjab PSC",
+          "Punjab One Day",
+          "Optional",
+          "Test series"
+        ],
+        "addOnly": true
+      }
+    },
+    "system": [
+      "order",
+      "published",
+      "dummy"
+    ]
+  },
+  "teachers": {
+    "fields": {
+      "photo": {
+        "label": "Photo",
+        "type": "image"
+      },
+      "name": {
+        "label": "Name",
+        "type": "text",
+        "required": true,
+        "max": 60
+      },
+      "subject": {
+        "label": "Subject",
+        "type": "text",
+        "required": true,
+        "max": 60
+      },
+      "credential": {
+        "label": "Credential",
+        "type": "text",
+        "max": 70
+      },
+      "bio": {
+        "label": "Short bio",
+        "type": "textarea",
+        "max": 240
+      },
+      "intro_video_url": {
+        "label": "Intro video link (optional)",
+        "type": "url"
+      }
+    },
+    "system": [
+      "order",
+      "published",
+      "dummy"
+    ]
+  },
+  "results": {
+    "fields": {
+      "photo": {
+        "label": "Photo",
+        "type": "image"
+      },
+      "student_name": {
+        "label": "Student name",
+        "type": "text",
+        "required": true,
+        "max": 60
+      },
+      "exam": {
+        "label": "Exam",
+        "type": "text",
+        "required": true,
+        "max": 40
+      },
+      "exam_year": {
+        "label": "Year",
+        "type": "text",
+        "required": true,
+        "max": 4
+      },
+      "rank_label": {
+        "label": "Rank label",
+        "type": "text",
+        "required": true,
+        "max": 20
+      },
+      "quote": {
+        "label": "Quote (optional)",
+        "type": "textarea",
+        "max": 200
+      },
+      "show_on_home": {
+        "label": "Show on the Home page (and landing-page topper strips)",
+        "type": "checkbox"
+      }
+    },
+    "system": [
+      "order",
+      "published",
+      "dummy"
+    ]
+  },
+  "reels": {
+    "fields": {
+      "instagram_url": {
+        "label": "Instagram reel link",
+        "type": "url",
+        "required": true,
+        "pattern": "^https?:\\/\\/(www\\.)?instagram\\.com\\/([A-Za-z0-9_.]+\\/)?(reels?|p|tv)\\/[A-Za-z0-9_-]{5,20}([/?#]|$)",
+        "patternFlags": "i",
+        "patternHelp": "Paste an Instagram reel link, for example https://www.instagram.com/reel/AbCdEfGh123/"
+      },
+      "student_name": {
+        "label": "Student name",
+        "type": "text",
+        "required": true,
+        "max": 40
+      },
+      "label": {
+        "label": "Rank and exam",
+        "type": "text",
+        "max": 50
+      },
+      "cover": {
+        "label": "Cover picture",
+        "type": "image"
+      }
+    },
+    "system": [
+      "order",
+      "published",
+      "dummy"
+    ]
+  },
+  "resources": {
+    "fields": {
+      "title": {
+        "label": "Title",
+        "type": "text",
+        "required": true,
+        "max": 70
+      },
+      "subtitle": {
+        "label": "Subtitle",
+        "type": "text",
+        "max": 90
+      },
+      "category": {
+        "label": "Category",
+        "type": "select",
+        "required": true,
+        "options": [
+          "Notes & PDFs",
+          "PYQs",
+          "Current Affairs",
+          "Videos",
+          "Punjab GK"
+        ]
+      },
+      "type": {
+        "label": "Type",
+        "type": "select",
+        "required": true,
+        "options": [
+          "pdf",
+          "video",
+          "link"
+        ]
+      },
+      "file": {
+        "label": "Upload a PDF",
+        "type": "file"
+      },
+      "url": {
+        "label": "Link",
+        "type": "url"
+      },
+      "show_on_home": {
+        "label": "Show in the Home page carousel",
+        "type": "checkbox"
+      }
+    },
+    "system": [
+      "order",
+      "published",
+      "dummy"
+    ]
+  },
+  "exam-updates": {
+    "fields": {
+      "date": {
+        "label": "Date",
+        "type": "date",
+        "required": true
+      },
+      "exam_body": {
+        "label": "Exam body",
+        "type": "select",
+        "required": true,
+        "options": [
+          "UPSC",
+          "PPSC",
+          "PSSSB",
+          "Punjab Police",
+          "Other"
+        ]
+      },
+      "category": {
+        "label": "Category",
+        "type": "select",
+        "required": true,
+        "options": [
+          "Notification",
+          "Exam date",
+          "Admit card",
+          "Answer key",
+          "Result",
+          "Syllabus"
+        ]
+      },
+      "title": {
+        "label": "Title",
+        "type": "text",
+        "required": true,
+        "max": 120
+      },
+      "link": {
+        "label": "Official link",
+        "type": "url"
+      }
+    },
+    "system": [
+      "published",
+      "dummy"
+    ]
+  },
+  "tests": {
+    "fields": {
+      "title": {
+        "label": "Title",
+        "type": "text",
+        "required": true,
+        "max": 80
+      },
+      "exam": {
+        "label": "Exam",
+        "type": "select",
+        "required": true,
+        "options": [
+          "UPSC CSE",
+          "Punjab PSC (PCS)",
+          "Punjab One Day Exams",
+          "Other"
+        ]
+      },
+      "question_count": {
+        "label": "Questions",
+        "type": "number",
+        "required": true
+      },
+      "duration_min": {
+        "label": "Duration (minutes)",
+        "type": "number",
+        "required": true
+      },
+      "test_url": {
+        "label": "Test link",
+        "type": "url",
+        "required": true
+      }
+    },
+    "system": [
+      "published",
+      "dummy"
+    ]
+  }
+}

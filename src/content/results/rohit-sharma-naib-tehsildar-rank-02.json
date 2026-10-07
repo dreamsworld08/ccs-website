@@ -1,0 +1,12 @@
+{
+  "student_name": "Rohit Sharma",
+  "exam": "Naib Tehsildar",
+  "exam_year": "2025",
+  "rank_label": "Rank 02",
+  "photo": "/uploads/placeholders/person-7.svg",
+  "quote": "A one-year plan that actually worked.",
+  "show_on_home": false,
+  "order": 7,
+  "published": true,
+  "dummy": true
+}

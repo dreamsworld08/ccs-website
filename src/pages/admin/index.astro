@@ -1,0 +1,22 @@
+---
+import '../../admin/admin.css';
+import App from '../../admin/App';
+import { BASE } from '../../lib/site';
+---
+
+<!doctype html>
+<html lang="en" data-base={BASE}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CCS Admin</title>
+    <meta name="robots" content="noindex, nofollow, noarchive" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <link rel="icon" type="image/svg+xml" href={`${BASE}/favicon.svg`} />
+  </head>
+  <body>
+    <div id="admin-root">
+      <App client:only="preact" />
+    </div>
+  </body>
+</html>

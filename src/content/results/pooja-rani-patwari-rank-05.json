@@ -1,0 +1,12 @@
+{
+  "student_name": "Pooja Rani",
+  "exam": "PSSSB Patwari",
+  "exam_year": "2025",
+  "rank_label": "Rank 05",
+  "photo": "/uploads/placeholders/person-8.svg",
+  "quote": "Short notes and mock tests, nothing extra.",
+  "show_on_home": false,
+  "order": 8,
+  "published": true,
+  "dummy": true
+}

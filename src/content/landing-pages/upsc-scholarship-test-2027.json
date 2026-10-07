@@ -1,0 +1,54 @@
+{
+  "slug": "upsc-scholarship-test-2027",
+  "internal_name": "UPSC Scholarship Test 2027",
+  "published": true,
+  "show_on_main_site": true,
+  "seo_title": "UPSC Scholarship Test 2027 | Chandigarh Civil Services",
+  "seo_description": "Take the CCS UPSC Scholarship Test and win up to 100% off on the UPSC CSE Foundation Programme. Register for free counselling.",
+  "hero_kicker": "Scholarship test · Limited seats",
+  "hero_headline": "Win up to 100% scholarship on UPSC 2027",
+  "hero_subtext": "One test, one hour. Know where you stand and unlock a fee waiver on our UPSC CSE Foundation Programme.",
+  "hero_bullets": [
+    "Free for every registered aspirant",
+    "Detailed performance report with mentor call",
+    "Scholarship from 25% up to 100%"
+  ],
+  "countdown_date": "2026-12-15T10:00",
+  "default_exam": "UPSC CSE",
+  "benefits": [
+    {
+      "title": "Know your level",
+      "text": "A full-length GS paper that mirrors the Prelims pattern."
+    },
+    {
+      "title": "Personal feedback",
+      "text": "A 1-on-1 call with a mentor to plan your next 12 months."
+    },
+    {
+      "title": "Real scholarships",
+      "text": "Merit-based fee waiver on the Foundation Programme."
+    }
+  ],
+  "show_toppers": true,
+  "faqs": [
+    {
+      "q": "Who can take the test?",
+      "a": "Any graduate or final-year student planning to attempt UPSC CSE in 2027, 2028 or 2029."
+    },
+    {
+      "q": "Is there a fee?",
+      "a": "No. The scholarship test is completely free."
+    },
+    {
+      "q": "Where is the test held?",
+      "a": "You can take it at our Chandigarh centre or online from home."
+    },
+    {
+      "q": "When will I get the result?",
+      "a": "Within 48 hours of the test, along with your scholarship percentage."
+    }
+  ],
+  "cta_headline": "Reserve your seat for the scholarship test",
+  "cta_button_label": "Book free counselling",
+  "dummy": true
+}

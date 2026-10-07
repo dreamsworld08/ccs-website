@@ -1,0 +1,12 @@
+{
+  "student_name": "Harleen Sidhu",
+  "exam": "Punjab PCS",
+  "exam_year": "2025",
+  "rank_label": "Rank 11",
+  "photo": "/uploads/placeholders/person-5.svg",
+  "quote": "Weekly tests kept me honest all year.",
+  "show_on_home": false,
+  "order": 5,
+  "published": true,
+  "dummy": true
+}

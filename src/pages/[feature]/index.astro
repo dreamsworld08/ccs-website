@@ -1,0 +1,57 @@
+---
+import Base from '../../layouts/Base.astro';
+import PageHeader from '../../components/PageHeader.astro';
+import Icon from '../../components/Icon.astro';
+import { getSettings, getTests, safeHref } from '../../lib/site';
+
+/**
+ * Feature-flagged pages. "free-tests" is only generated while settings.show_free_tests is true;
+ * otherwise the page does not exist in the build at all (and the nav link is not rendered).
+ */
+export async function getStaticPaths() {
+  const settings = await getSettings();
+  return settings.show_free_tests ? [{ params: { feature: 'free-tests' } }] : [];
+}
+const tests = await getTests();
+---
+
+<Base
+  title="Free Tests"
+  description="Free mock tests for UPSC CSE, Punjab PCS and Punjab one-day exams."
+>
+  <PageHeader
+    kicker="Free tests"
+    title="Practice tests"
+    text="Attempt a free timed test and see where you stand."
+    tone="lavender"
+  />
+  <section class="panel bg-white border border-line">
+    <div class="container-x section-pad">
+      {tests.length ? (
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {tests.map((t) => (
+            <article class="card flex flex-col p-6">
+              <span class="chip mb-5 self-start">{t.data.exam}</span>
+              <h2 class="h3 mb-5">{t.data.title}</h2>
+              <p class="mono mb-6 text-[14px] text-muted">
+                {t.data.question_count} questions · {t.data.duration_min} min
+              </p>
+              {safeHref(t.data.test_url) && (
+                <a
+                  class="btn btn-primary btn-sm mt-auto self-start"
+                  href={safeHref(t.data.test_url)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Start test <Icon name="arrow-up-right" size={16} />
+                </a>
+              )}
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p class="text-muted">No tests published yet.</p>
+      )}
+    </div>
+  </section>
+</Base>

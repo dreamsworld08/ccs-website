@@ -1,0 +1,54 @@
+{
+  "hero_video_url": "https://www.youtube.com/watch?v=pr2JbxsBlnk&t=21s",
+  "hero_poster": "/uploads/home/pr2jbxsblnk-hd-1791270465484.webp",
+  "hero_kicker": "Welcome to Chandigarh Civil Services,",
+  "hero_headline": "Crack the civil services. From Chandigarh.",
+  "hero_subtext": "Expert mentors, disciplined test practice and honest guidance for aspirants across Punjab, Haryana and Himachal.",
+  "hero_btn1_label": "Book free counselling",
+  "hero_btn2_label": "Explore courses",
+  "hero_btn2_link": "/courses",
+  "hero_search_placeholder": "Search resources, updates and results",
+  "hero_search_popular": [
+    "Patwari",
+    "PYQ",
+    "Admit card",
+    "Current affairs",
+    "Punjab GK"
+  ],
+  "stats": [
+    {
+      "value": "500+",
+      "label": "Selections since 2015"
+    },
+    {
+      "value": "12",
+      "label": "Expert mentors"
+    },
+    {
+      "value": "8,000+",
+      "label": "Students mentored"
+    },
+    {
+      "value": "4.8/5",
+      "label": "Student rating"
+    }
+  ],
+  "founder_photo": "/uploads/founder/screenshot-2026-10-06-at-12-38-24-pm-1791270517173.webp",
+  "founder_name": "Jatin Minhas",
+  "founder_designation": "Founder & Director",
+  "founder_kicker": "A message for students",
+  "founder_headline": "Preparation is a discipline, not a talent.",
+  "founder_message": "Every year I meet aspirants who are as capable as any topper; what they lack is a plan and someone who tells them the truth about their preparation. At CCS we build both: a plan you can follow every day and mentors who review your work honestly. Come and speak to us. Your first counselling session is free.",
+  "featured_course_ids": [
+    "upsc-cse-foundation",
+    "punjab-pcs-comprehensive",
+    "patwari-clerk-batch"
+  ],
+  "cta_headline": "Start your preparation the right way",
+  "cta_subtext": "Share your details and our counsellor will call you within 24 hours.",
+  "cta_points": [
+    "Free 1-on-1 counselling with a mentor",
+    "A personalised study plan for your attempt year",
+    "Free access to notes, PYQs and weekly tests"
+  ]
+}

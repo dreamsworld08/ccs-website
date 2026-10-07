@@ -1,0 +1,57 @@
+---
+import Icon from './Icon.astro';
+import { formatDate, safeHref } from '../lib/site';
+interface Props {
+  update: {
+    id: string;
+    data: { date: string; exam_body: string; category: string; title: string; link: string };
+  };
+  dark?: boolean;
+  /** Compact rows are used in the Home strip */
+  compact?: boolean;
+}
+const { update, dark = false, compact = false } = Astro.props;
+const { date, exam_body, category, title, link } = update.data;
+const href = safeHref(link);
+---
+
+<li
+  class:list={[
+    'grid gap-x-4 gap-y-2.5 py-4 md:py-5 border-b items-center',
+    dark ? 'border-white/12' : 'border-line',
+    'sm:grid-cols-[110px_1fr_auto]',
+  ]}
+  data-item
+  data-category={category}
+>
+  <p class:list={['mono text-[13px]', dark ? 'text-white/65' : 'text-muted']}>{formatDate(date)}</p>
+  <div class="min-w-0">
+    <div class="mb-2 flex flex-wrap gap-2">
+      <span class:list={['chip', dark ? '!bg-white/12 !text-white' : '']}>{exam_body}</span>
+      <span class:list={['chip chip-line', dark ? '!border-white/25 !text-white' : '']}>
+        {category}
+      </span>
+    </div>
+    <p
+      class:list={[
+        'font-medium leading-snug',
+        compact ? 'text-[16px]' : 'text-[17px] md:text-[18px]',
+      ]}
+    >
+      {title}
+    </p>
+  </div>
+  {href && (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      class:list={[
+        'btn btn-sm justify-self-start sm:justify-self-end',
+        dark ? 'btn-white' : 'btn-secondary',
+      ]}
+    >
+      Official link <Icon name="arrow-up-right" size={15} />
+    </a>
+  )}
+</li>

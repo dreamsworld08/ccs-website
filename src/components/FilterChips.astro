@@ -1,0 +1,20 @@
+---
+interface Props {
+  field: string;
+  options: string[];
+  label: string;
+  allLabel?: string;
+}
+const { field, options, label, allLabel = 'All' } = Astro.props;
+---
+
+<div class="flex flex-wrap gap-2" data-chip-group={field} role="group" aria-label={label}>
+  <button type="button" class="filter-chip" data-chip="" aria-pressed="true">
+    {allLabel}
+  </button>
+  {options.map((o) => (
+    <button type="button" class="filter-chip" data-chip={o} aria-pressed="false">
+      {o}
+    </button>
+  ))}
+</div>

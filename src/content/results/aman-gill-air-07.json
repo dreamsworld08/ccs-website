@@ -1,0 +1,12 @@
+{
+  "student_name": "Aman Gill",
+  "exam": "UPSC CSE",
+  "exam_year": "2025",
+  "rank_label": "AIR 07",
+  "photo": "/uploads/placeholders/person-1.svg",
+  "quote": "Daily answer writing at CCS made the Mains paper feel familiar.",
+  "show_on_home": true,
+  "order": 1,
+  "published": true,
+  "dummy": true
+}

@@ -1,0 +1,62 @@
+---
+import Base from '../layouts/Base.astro';
+import PageHeader from '../components/PageHeader.astro';
+import ResourceCard from '../components/ResourceCard.astro';
+import FilterChips from '../components/FilterChips.astro';
+import Icon from '../components/Icon.astro';
+import { getResources } from '../lib/site';
+
+const resources = await getResources();
+const order = ['Notes & PDFs', 'PYQs', 'Current Affairs', 'Videos', 'Punjab GK'];
+const cats = order.filter((c) => resources.some((r) => r.data.category === c));
+---
+
+<Base
+  title="Free Resources"
+  description="Free notes, previous year questions, current affairs and Punjab GK for UPSC, Punjab PCS and one-day exams."
+>
+  <PageHeader
+    kicker="Free resources"
+    title="Study material, free"
+    text="Notes, previous year papers, current affairs and Punjab GK. Download or watch, no sign-up needed."
+    tone="mint"
+  />
+
+  <section class="panel bg-white border border-line" data-list-filter>
+    <div class="container-x section-pad">
+      <div class="mb-8 grid gap-4 lg:grid-cols-[1fr_340px] lg:items-center">
+        <FilterChips field="category" options={cats} label="Filter resources by category" />
+        <div class="relative">
+          <label class="sr-only-x" for="resource-search">
+            Search resources
+          </label>
+          <span class="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted">
+            <Icon name="search" size={18} />
+          </span>
+          <input
+            id="resource-search"
+            type="search"
+            class="input !pl-11"
+            placeholder="Search resources"
+            data-search-input
+            autocomplete="off"
+          />
+        </div>
+      </div>
+      <p class="mono mb-5 text-[13px] text-muted" data-count aria-live="polite"></p>
+      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {resources.map((r) => (
+          <ResourceCard resource={r} level={2} />
+        ))}
+      </div>
+      <p class="mt-8 text-muted" data-empty hidden>
+        Nothing matches your search. Try another word or category.
+      </p>
+    </div>
+  </section>
+</Base>
+
+<script>
+  import { initListFilters } from '../scripts/list-filter';
+  initListFilters();
+</script>

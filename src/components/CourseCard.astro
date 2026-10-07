@@ -1,0 +1,54 @@
+---
+import Img from './Img.astro';
+import { examForCategory } from '../lib/site';
+interface Props {
+  course: {
+    id: string;
+    data: { name: string; price: string; thumbnail: string; category: string };
+  };
+  /** Heading level of the card title: 2 on pages where the cards follow the page h1 directly */
+  level?: 2 | 3;
+}
+const { course, level = 3 } = Astro.props;
+const Heading = `h${level}` as 'h2' | 'h3';
+const { name, price, thumbnail, category } = course.data;
+---
+
+<!-- Phones: a compact horizontal card (thumbnail left, details right). From 768px: the large vertical card. -->
+<article class="card flex h-full flex-row md:flex-col" data-item data-category={category}>
+  <div class="w-[104px] shrink-0 p-1.5 sm:w-[132px] md:w-auto md:p-2 md:pb-0">
+    <div class="relative h-full min-h-[92px] overflow-hidden rounded-[13px] bg-panel md:aspect-[16/10] md:h-auto md:min-h-0 md:rounded-[20px]">
+      {thumbnail && (
+        <Img
+          src={thumbnail}
+          alt={`${name} course thumbnail`}
+          width={640}
+          height={400}
+          sizes="(min-width: 1024px) 380px, (min-width: 768px) 46vw, 132px"
+          class="absolute inset-0 h-full w-full object-cover"
+        />
+      )}
+      <span class="chip chip-kicker absolute left-3 top-3 hidden md:inline-flex">{category}</span>
+    </div>
+  </div>
+  <div class="flex min-w-0 flex-1 flex-col justify-between gap-2 p-3 pl-2 md:gap-0 md:p-6">
+    <div>
+      <p class="mono mb-1 text-[11px] uppercase tracking-wider text-primary md:hidden">
+        {category}
+      </p>
+      <Heading class="h3 !text-[17px] !leading-[1.08] md:mb-3 md:!text-[24px]">{name}</Heading>
+    </div>
+    <div class="flex items-center justify-between gap-2 md:mt-auto md:pt-3">
+      <p class="mono text-[16px] font-medium md:text-[20px]">{price}</p>
+      <button
+        type="button"
+        class="btn btn-dark btn-sm"
+        data-open-enquiry
+        data-exam={examForCategory(category)}
+        aria-label={`Enquire about ${name}`}
+      >
+        Enquire
+      </button>
+    </div>
+  </div>
+</article>

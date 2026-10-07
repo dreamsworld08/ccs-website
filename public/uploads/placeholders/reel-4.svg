@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 640" role="img" aria-label="Placeholder reel cover">
+  <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F5E9D8"/><stop offset="1" stop-color="#B26A1B" stop-opacity=".55"/></linearGradient></defs>
+  <rect width="360" height="640" fill="url(#g)"/>
+  <circle cx="180" cy="270" r="74" fill="#B26A1B" opacity=".9"/>
+  <path d="M40 640C40 480 100 392 180 392s140 88 140 248z" fill="#B26A1B" opacity=".9"/>
+</svg>

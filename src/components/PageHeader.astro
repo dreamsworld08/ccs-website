@@ -1,0 +1,34 @@
+---
+interface Props {
+  kicker?: string;
+  title: string;
+  text?: string;
+  tone?: 'panel' | 'sky' | 'lavender' | 'mint';
+}
+const { kicker, title, text, tone = 'panel' } = Astro.props;
+const bg = { panel: 'bg-panel', sky: 'bg-sky', lavender: 'bg-lavender', mint: 'bg-mint' }[tone];
+const hasAside = Astro.slots.has('aside');
+---
+
+<section class={`panel ${bg}`}>
+  <div
+    class:list={[
+      'container-x pt-9 pb-8 md:pt-20 md:pb-16',
+      hasAside && 'grid gap-8 lg:grid-cols-[1.2fr_1fr] lg:gap-14 items-center',
+    ]}
+  >
+    <div class="min-w-0">
+      {kicker && <span class="chip chip-kicker mb-5">{kicker}</span>}
+      <h1 class="display">{title}</h1>
+      {text && (
+        <p class="mt-5 md:mt-6 max-w-[620px] text-muted text-[16px] md:text-[19px]">{text}</p>
+      )}
+      <slot />
+    </div>
+    {hasAside && (
+      <div class="min-w-0">
+        <slot name="aside" />
+      </div>
+    )}
+  </div>
+</section>

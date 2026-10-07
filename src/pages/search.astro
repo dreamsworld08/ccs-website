@@ -1,0 +1,41 @@
+---
+import Base from '../layouts/Base.astro';
+import PageHeader from '../components/PageHeader.astro';
+import SearchResults from '../islands/SearchResults';
+import { withBase } from '../lib/site';
+---
+
+<Base
+  title="Search"
+  description="Search free resources, exam updates and results at Chandigarh Civil Services."
+  noindex
+>
+  <PageHeader
+    kicker="Search"
+    title="Find what you need"
+    text="Look up free resources, the latest exam updates and our students’ results."
+  >
+    <noscript>
+      <p class="mt-6 rounded-[20px] bg-white p-5 text-[15px]">
+        Search needs JavaScript. You can browse{' '}
+        <a class="text-primary underline" href={withBase('/free-resources/')}>
+          Free Resources
+        </a>
+        ,
+        <a class="text-primary underline" href={withBase('/exam-updates/')}>
+          Exam Updates
+        </a>{' '}
+        and
+        <a class="text-primary underline" href={withBase('/results/')}>
+          Results
+        </a>{' '}
+        directly.
+      </p>
+    </noscript>
+  </PageHeader>
+  <section class="panel bg-white border border-line">
+    <div class="container-x section-pad min-h-[50vh]">
+      <SearchResults client:only="preact" />
+    </div>
+  </section>
+</Base>

@@ -1,0 +1,1633 @@
+// End-to-end checks in a real browser against the BUILT site and the local dev backend.
+//   terminal 1:  npm run dev:api
+//   terminal 2:  npm run build:local && npm run e2e
+// Covers: popup, form validation + submit, exam-update signup, landing page, filters, admin login,
+// enquiry status/notes, content CRUD, image upload, security edge cases. Cleans up what it creates.
+import { readFile, rm, readdir, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import puppeteer from 'puppeteer-core';
+import sharp from 'sharp';
+import { serveDist } from './lib/static-server.mjs';
+
+const ROOT = new URL('..', import.meta.url).pathname;
+const CHROME =
+  process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+const API = process.env.API_URL || 'http://localhost:8787';
+const LOGIN = 'admin.ccs.chandigar';
+const PASSWORD = process.env.DEV_ADMIN_PASSWORD || 'Admin@123';
+const SHOTS = process.env.SHOTS || '';
+
+let pass = 0;
+let fail = 0;
+const ok = (name) => {
+  pass++;
+  console.log(`  ok   ${name}`);
+};
+const bad = (name, extra = '') => {
+  fail++;
+  console.log(`  FAIL ${name} ${extra}`);
+};
+const check = (cond, name, extra) => (cond ? ok(name) : bad(name, extra));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function api(action, params = {}) {
+  const r = await fetch(API, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ action, ...params }),
+  });
+  return r.json();
+}
+
+try {
+  const h = await fetch(API);
+  if (!h.ok) throw new Error('bad status');
+} catch {
+  console.error(`Dev backend not reachable at ${API}. Start it with: npm run dev:api`);
+  process.exit(2);
+}
+
+const { port, close } = await serveDist(join(ROOT, 'dist'));
+const SITE = `http://localhost:${port}`;
+const browser = await puppeteer.launch({
+  executablePath: CHROME,
+  headless: 'new',
+  args: ['--no-sandbox'],
+});
+const login = await api('login', { email: LOGIN, password: PASSWORD });
+check(login.ok, 'API login with the hardcoded admin');
+const token = login.token;
+const enquiryRows = async () => (await api('listEnquiries', { token })).rows;
+
+let popupMobile = '';
+const mobile = (n) => `98${String(70000000 + n).padStart(8, '0')}`;
+let seq = Math.floor(Date.now() / 1000) % 1000000;
+const freshMobile = () => mobile(seq++);
+
+async function newPage(width = 390, mobileEmu = true) {
+  const page = await browser.newPage();
+  await page.setViewport({ width, height: 844, isMobile: mobileEmu, hasTouch: mobileEmu });
+  page.errors = [];
+  // Each page starts without the 60-second re-submit cooldown (it is tested explicitly below).
+  await page.evaluateOnNewDocument(() => {
+    try {
+      localStorage.removeItem('ccs_last_submit');
+    } catch {
+      /* ignore */
+    }
+  });
+  page.on('pageerror', (e) => page.errors.push(e.message));
+  page.on('console', (m) => {
+    if (m.type() === 'error' && !/Failed to load resource|ERR_|youtube|ytimg/.test(m.text()))
+      page.errors.push(m.text());
+  });
+  return page;
+}
+const open = async (page, path) => {
+  await page.goto(SITE + path, { waitUntil: 'networkidle0' });
+  // wait for eagerly hydrated islands (forms on landing pages etc.)
+  await page.waitForFunction(
+    () => document.querySelectorAll('astro-island[client="load"][ssr]').length === 0,
+  );
+  await sleep(250);
+};
+const click = async (page, sel) => {
+  await page.waitForSelector(sel, { visible: true });
+  await page.click(sel);
+};
+
+/* ============================================================ public site */
+console.log('\nPopup + enquiry form (mobile 390px)');
+{
+  const page = await newPage();
+  await open(page, '/');
+  await page.waitForFunction(
+    () => !!document.querySelector('astro-island[client="idle"]:not([ssr])') || true,
+  );
+  await sleep(500);
+  await click(page, '[data-hero] [data-open-enquiry]');
+  await page.waitForSelector('dialog[open]');
+  ok('popup opens from the hero button');
+  const sheet = await page.evaluate(() => {
+    const r = document.querySelector('dialog[open]').getBoundingClientRect();
+    return {
+      bottom: Math.round(r.bottom),
+      vh: innerHeight,
+      width: Math.round(r.width),
+      vw: innerWidth,
+    };
+  });
+  check(
+    sheet.width === sheet.vw && sheet.bottom >= sheet.vh - 2,
+    'popup is a full-width bottom sheet on mobile',
+    JSON.stringify(sheet),
+  );
+  if (SHOTS) await page.screenshot({ path: join(SHOTS, 'e2e-popup-390.png') });
+  const focusInside = await page.evaluate(() =>
+    document.querySelector('dialog[open]').contains(document.activeElement),
+  );
+  check(focusInside, 'focus moves into the dialog');
+  await page.keyboard.press('Escape');
+  await sleep(300);
+  check(!(await page.$('dialog[open]')), 'Escape closes the popup');
+
+  await click(page, '[data-hero] [data-open-enquiry]');
+  await page.waitForSelector('dialog[open] form');
+  await page.click('dialog[open] button[type=submit]');
+  await sleep(200);
+  const errCount = await page.$$eval('dialog[open] .field-error', (e) => e.length);
+  // Only name, mobile number and exam are mandatory (year, email, city and message are optional).
+  check(errCount === 3, 'empty submit flags the three required fields', `errors=${errCount}`);
+
+  const num = freshMobile();
+  popupMobile = num;
+  await page.type('dialog[open] input[name=name]', 'E2E Popup Tester');
+  await page.type('dialog[open] input[name=mobile]', '12345');
+  await page.select('dialog[open] select[name=exam]', 'UPSC CSE');
+  await page.select('dialog[open] select[name=year]', '2027');
+  await page.click('dialog[open] button[type=submit]');
+  await sleep(200);
+  check(
+    await page
+      .$eval('dialog[open] #popup-mobile-err', (e) => /valid 10-digit/.test(e.textContent))
+      .catch(() => false),
+    'invalid mobile is rejected client-side',
+  );
+  await page.$eval('dialog[open] input[name=mobile]', (el) => {
+    el.focus();
+    el.select();
+  });
+  await page.type('dialog[open] input[name=mobile]', `+91 ${num.slice(0, 5)} ${num.slice(5)}`);
+  await page.click('dialog[open] button[type=submit]');
+  await page.waitForSelector('dialog[open] [role=status]', { timeout: 8000 });
+  ok('valid submit shows the success state');
+  const rows = await enquiryRows();
+  const row = rows.find((r) => r.mobile === num);
+  check(
+    !!row &&
+      row.status === 'Open' &&
+      row.source === 'popup' &&
+      row.exam === 'UPSC CSE' &&
+      row.year === '2027',
+    'row saved with Status=Open, source=popup',
+    JSON.stringify(row),
+  );
+  check(page.errors.length === 0, 'no console errors on Home', page.errors.join(' | '));
+
+  // 60-second client-side re-submit block
+  await page.evaluate(() =>
+    document.querySelector('dialog[open] button[aria-label="Close enquiry form"]').click(),
+  );
+  await sleep(300);
+  await click(page, '[data-hero] [data-open-enquiry]');
+  await page.waitForSelector('dialog[open] form');
+  await page.type('dialog[open] input[name=name]', 'Second Try');
+  await page.type('dialog[open] input[name=mobile]', freshMobile());
+  await page.select('dialog[open] select[name=exam]', 'UPSC CSE');
+  await page.select('dialog[open] select[name=year]', '2027');
+  await page.click('dialog[open] button[type=submit]');
+  await page.waitForSelector('dialog[open] [role=alert]');
+  const blocked = await page.$eval('dialog[open] [role=alert]', (e) => e.textContent);
+  check(
+    /wait \d+ seconds/.test(blocked) && !(await enquiryRows()).some((r) => r.name === 'Second Try'),
+    're-submit within 60 s is blocked in the browser',
+    blocked.slice(0, 80),
+  );
+  await page.close();
+}
+
+console.log('\nEnquiry form: only name, mobile and exam are mandatory');
+{
+  const page = await newPage();
+  await open(page, '/');
+  await sleep(400);
+  await click(page, '[data-hero] [data-open-enquiry]');
+  await page.waitForSelector('dialog[open] form');
+  const form = await page.evaluate(() => {
+    const d = document.querySelector('dialog[open]');
+    const label = (n) => d.querySelector(`label[for="popup-${n}"]`)?.textContent ?? '';
+    return {
+      checkboxes: d.querySelectorAll('input[type=checkbox]').length,
+      required: [...d.querySelectorAll('[required]')].map((e) => e.name).sort(),
+      year: label('year'),
+      email: label('email'),
+      notice: /agree to be contacted/i.test(d.textContent),
+      privacy: d.querySelector('a[href$="/privacy-policy/"]')?.getAttribute('rel') ?? '',
+    };
+  });
+  check(
+    form.required.join(',') === 'exam,mobile,name',
+    'exactly three fields are marked required: name, mobile, exam',
+    form.required.join(','),
+  );
+  check(
+    /optional/i.test(form.year) && /optional/i.test(form.email),
+    'year of attempt and email are labelled optional',
+    `${form.year} | ${form.email}`,
+  );
+  check(
+    form.checkboxes === 0 && form.notice && form.privacy.includes('noopener'),
+    'no consent checkbox: a notice with a Privacy Policy link replaces it',
+    JSON.stringify(form),
+  );
+  const num = freshMobile();
+  await page.type('dialog[open] input[name=name]', 'Three Fields Only');
+  await page.type('dialog[open] input[name=mobile]', num);
+  await page.select('dialog[open] select[name=exam]', 'Punjab PSC (PCS)');
+  await page.click('dialog[open] button[type=submit]');
+  await page.waitForSelector('dialog[open] [role=status]', { timeout: 8000 });
+  const row = (await enquiryRows()).find((r) => r.mobile === num);
+  check(
+    row?.name === 'Three Fields Only' &&
+      row.exam === 'Punjab PSC (PCS)' &&
+      row.year === '' &&
+      row.email === '' &&
+      row.city === '' &&
+      row.message === '' &&
+      row.status === 'Open',
+    'name + mobile + exam alone is accepted and saved (year, email, city, message left blank)',
+    JSON.stringify(row),
+  );
+  check(
+    (await api('submitEnquiry', { name: 'No Exam', mobile: freshMobile(), exam: '' })).ok === false,
+    'the server still refuses a missing exam',
+  );
+  check(
+    (
+      await api('submitEnquiry', {
+        name: 'Bad Year',
+        mobile: freshMobile(),
+        exam: 'Other',
+        year: 'abc',
+      })
+    ).ok === false,
+    'a malformed year is refused, a missing one is not',
+  );
+  await page.close();
+}
+
+console.log('\nExam-updates signup, landing page, course-prefilled popup');
+{
+  const page = await newPage();
+  await open(page, '/exam-updates/');
+  const num = freshMobile();
+  await page.waitForSelector('#eu-page-name');
+  await page.type('#eu-page-name', 'E2E Signup');
+  await page.type('#eu-page-mobile', num);
+  await page.select('#eu-page-exam', 'Punjab One Day Exams');
+  await page.click('form[aria-label="Register for regular exam updates"] button[type=submit]');
+  await page.waitForSelector('[role=status]', { timeout: 8000 });
+  const row = (await enquiryRows()).find((r) => r.mobile === num);
+  check(
+    row?.source === 'exam_updates_signup' && row?.status === 'Open' && row?.year === '',
+    'signup saved with source=exam_updates_signup',
+    JSON.stringify(row),
+  );
+  await page.close();
+
+  const lp = await newPage();
+  await open(lp, '/lp/upsc-scholarship-test-2027/');
+  const preselected = await lp.$eval('#lp-exam', (s) => s.value);
+  check(preselected === 'UPSC CSE', 'landing page pre-selects the exam', preselected);
+  check(!(await lp.$('nav[aria-label="Main"]')), 'landing page has no main menu');
+  const lpNum = freshMobile();
+  await lp.type('#lp-name', 'E2E Landing');
+  await lp.type('#lp-mobile', lpNum);
+  await lp.select('#lp-year', '2028');
+  await lp.click('#enquire button[type=submit]');
+  await lp.waitForSelector('#enquire [role=status]', { timeout: 8000 }).catch(async (e) => {
+    console.log(
+      '  LP form state:',
+      (await lp.$eval('#enquire', (n) => n.innerText)).replace(/\n+/g, ' | ').slice(0, 400),
+    );
+    throw e;
+  });
+  const lrow = (await enquiryRows()).find((r) => r.mobile === lpNum);
+  check(
+    lrow?.source === 'lp:upsc-scholarship-test-2027',
+    'landing enquiry saved with source=lp:<slug>',
+    lrow?.source,
+  );
+  check((await lp.$('dialog')) === null, 'no popup element on landing pages');
+  await lp.close();
+
+  // A form that has not hydrated (its script is blocked here) must not fall back to a native GET
+  // submit, which would put the visitor's name and mobile number into the URL.
+  const pre = await newPage(390);
+  await pre.setRequestInterception(true);
+  pre.on('request', (r) => (/EnquiryForm[^/]*\.js/.test(r.url()) ? r.abort() : r.continue()));
+  await pre.goto(`${SITE}/lp/upsc-scholarship-test-2027/`, { waitUntil: 'load' });
+  await sleep(800);
+  await pre.type('#lp-name', 'Pre Hydration');
+  await pre.type('#lp-mobile', '9812312312');
+  await pre.click('#enquire button[type=submit]');
+  await sleep(600);
+  check(
+    !pre.url().includes('?') && !pre.url().includes('Pre'),
+    'an un-hydrated form does not put personal data in the URL',
+    pre.url(),
+  );
+  await pre.close();
+
+  const cp = await newPage();
+  await open(cp, '/courses/');
+  await sleep(400);
+  await click(cp, 'article[data-category="Punjab PSC"] [data-open-enquiry]');
+  await cp.waitForSelector('dialog[open] select[name=exam]');
+  const ex = await cp.$eval('dialog[open] select[name=exam]', (s) => s.value);
+  check(ex === 'Punjab PSC (PCS)', 'course Enquire pre-selects the exam', ex);
+  await cp.close();
+}
+
+console.log('\nFilters (client-side)');
+{
+  const page = await newPage(1280, false);
+  await open(page, '/results/');
+  const shown = () => page.$$eval('[data-item]', (els) => els.filter((e) => !e.hidden).length);
+  check((await shown()) === 12, 'results show 12 first', String(await shown()));
+  check(
+    await page.$eval('[data-more]', (b) => b.hidden),
+    'Load more is hidden when everything already fits in 12',
+  );
+  await page.click('[data-chip-group="exam"] [data-chip="UPSC CSE"]');
+  const upsc = await shown();
+  check(upsc === 4, 'exam chip filters results', String(upsc));
+  await page.select('[data-filter-select="year"]', '2024');
+  check((await shown()) === 1, 'year dropdown narrows further');
+
+  await open(page, '/free-resources/');
+  await page.type('#resource-search', 'punjab');
+  const matches = await page.$$eval('[data-item]', (els) => els.filter((e) => !e.hidden).length);
+  check(matches >= 2, 'resource search matches', String(matches));
+  await page.close();
+}
+
+/* ============================================================ site search */
+console.log('\nSite search (nav dropdown + /search/ page)');
+{
+  const page = await newPage(390);
+  await open(page, '/');
+  await sleep(600); // let the idle-hydrated island attach
+  // The Content-Security-Policy meta tag must stop a script injected into the page from running.
+  await page.evaluate(() => {
+    const el = document.createElement('script');
+    el.textContent = 'window.__csp = 1';
+    document.body.appendChild(el);
+  });
+  check(!(await page.evaluate(() => window.__csp)), 'CSP blocks an injected inline script');
+  page.errors.length = 0; // the browser logs the expected CSP violation as a console error
+  const SEARCH_BTN = 'a[aria-label^="Search free resources"]';
+  const optionTexts = () =>
+    page.$$eval('#nav-search-list [role=option]', (els) => els.map((e) => e.textContent.trim()));
+  const typeQuery = async (text) => {
+    await page.$eval('#nav-search-input', (el) => {
+      el.value = '';
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await page.type('#nav-search-input', text);
+    await sleep(250);
+  };
+
+  await click(page, SEARCH_BTN);
+  await page.waitForSelector('#nav-search-panel');
+  // The box focuses itself a few milliseconds after the panel appears, so wait for it instead of racing it.
+  const focused = await page
+    .waitForFunction(() => document.activeElement?.id === 'nav-search-input', { timeout: 2000 })
+    .then(() => true)
+    .catch(() => false);
+  check(focused, 'search opens with the input focused');
+  check(
+    (await page.$$('#nav-search-panel .filter-chip')).length >= 4,
+    'shows suggestions before typing',
+  );
+
+  await typeQuery('pyq');
+  let opts = await optionTexts();
+  check(
+    opts.some((t) => /UPSC Prelims PYQ/.test(t)) &&
+      opts.some((t) => /previous year papers/i.test(t)),
+    'free resources found (PYQ alias also matches "previous year")',
+    opts.join(' | ').slice(0, 160),
+  );
+  await typeQuery('hall ticket');
+  opts = await optionTexts();
+  check(
+    opts.some((t) => /admit card/i.test(t)),
+    'exam updates found through aliases ("hall ticket" -> admit card)',
+    opts.join(' | ').slice(0, 160),
+  );
+  await typeQuery('patwari');
+  opts = await optionTexts();
+  check(
+    opts.some((t) => /answer key/i.test(t)) && opts.some((t) => /Pooja Rani/.test(t)),
+    'one word finds an exam update AND a student result',
+    opts.join(' | ').slice(0, 200),
+  );
+  check(opts.at(-1)?.startsWith('See all'), 'last option is "See all results"');
+  await typeQuery('zzzzqq');
+  check(
+    await page.$eval('#nav-search-panel', (el) => /No matches for/.test(el.textContent)),
+    'friendly empty state',
+  );
+
+  // keyboard: ArrowDown + Enter on a result goes to the pre-filtered Results page
+  await typeQuery('aman gill');
+  await page.keyboard.press('ArrowDown');
+  check(
+    await page.$eval('#nav-search-opt-0', (el) => el.getAttribute('aria-selected') === 'true'),
+    'ArrowDown highlights the first option',
+  );
+  await Promise.all([
+    page.waitForNavigation({ waitUntil: 'networkidle0' }),
+    page.keyboard.press('Enter'),
+  ]);
+  check(
+    /\/results\/\?q=Aman%20Gill/.test(page.url()),
+    'Enter opens the result in the Results page',
+    page.url(),
+  );
+  await page.waitForFunction(
+    () => document.querySelectorAll('[data-item]:not([hidden])').length === 1,
+  );
+  check(
+    await page.$eval('[data-q-notice]', (el) => !el.hidden && /aman gill/i.test(el.textContent)),
+    'Results page shows only the searched student with a notice',
+  );
+  await page.click('[data-q-clear]');
+  check(
+    (await page.$$eval('[data-item]', (els) => els.filter((e) => !e.hidden).length)) === 12,
+    '"Show all results" restores the full list',
+  );
+
+  // Enter without a highlighted option -> full search page
+  await open(page, '/');
+  await sleep(600);
+  await click(page, SEARCH_BTN);
+  await page.waitForSelector('#nav-search-input');
+  await typeQuery('patwari');
+  await Promise.all([
+    page.waitForNavigation({ waitUntil: 'networkidle0' }),
+    page.keyboard.press('Enter'),
+  ]);
+  check(
+    /\/search\/\?q=patwari/.test(page.url()),
+    'Enter without a highlighted option opens /search/?q=',
+    page.url(),
+  );
+  await page.waitForSelector('#sr-u');
+  const sections = await page.$$eval('main h2', (h) => h.map((x) => x.textContent));
+  check(
+    sections.includes('Exam updates') && sections.includes('Results'),
+    'search page groups results by type',
+    sections.join(','),
+  );
+  await page.click('[role=group][aria-label="Filter results by type"] button:nth-child(3)');
+  await sleep(150);
+  check(
+    !(await page.$('#sr-r')) && !!((await page.$('#sr-u')) || (await page.$('#sr-s'))),
+    'type tabs narrow the results',
+  );
+  check(
+    await page.$eval('meta[name=robots]', (m) => /noindex/.test(m.content)),
+    'search page is noindex',
+  );
+
+  // untrusted text in the query is only ever shown as text
+  await page.goto(
+    `${SITE}/search/?q=${encodeURIComponent('<img src=x onerror="window.__xss=1">')}`,
+    { waitUntil: 'networkidle0' },
+  );
+  await sleep(300);
+  check(
+    !(await page.evaluate(() => window.__xss)) && !(await page.$('main img[src="x"]')),
+    'HTML in the query is not executed or injected',
+  );
+  check(
+    await page.$eval('[role=status]', (e) => e.textContent.includes('<img')),
+    'the query is displayed as plain text',
+  );
+
+  // Escape + focus return, and "/" shortcut
+  await open(page, '/courses/');
+  await sleep(600);
+  await click(page, SEARCH_BTN);
+  await page.waitForFunction(() => document.activeElement?.id === 'nav-search-input');
+  await page.keyboard.press('Escape');
+  await sleep(150);
+  check(
+    !(await page.$('#nav-search-panel')) &&
+      (await page.evaluate(() =>
+        document.activeElement?.getAttribute('aria-label')?.startsWith('Search'),
+      )),
+    'Escape closes the panel and returns focus to the search button',
+  );
+  await page.keyboard.press('/');
+  await page.waitForSelector('#nav-search-panel');
+  ok('"/" opens search from anywhere');
+
+  // no layout overflow with the panel open, on small phones
+  for (const w of [360, 390, 430]) {
+    await page.setViewport({ width: w, height: 800, isMobile: true, hasTouch: true });
+    await typeQuery('pyq');
+    const o = await page.evaluate(() => {
+      document.documentElement.style.overflowX = 'visible';
+      document.body.style.overflowX = 'visible';
+      return { s: document.documentElement.scrollWidth, v: document.documentElement.clientWidth };
+    });
+    check(o.s <= o.v, `search panel open: no horizontal overflow @${w}px`, JSON.stringify(o));
+  }
+  if (SHOTS) {
+    await page.setViewport({ width: 390, height: 800, isMobile: true, hasTouch: true });
+    await page.screenshot({ path: join(SHOTS, 'e2e-search-390.png') });
+  }
+  check(page.errors.length === 0, 'no console errors during search', page.errors.join(' | '));
+  await page.close();
+
+  // below 360px the header icon is hidden; the mobile menu has a plain search form instead
+  const small = await newPage(320);
+  await open(small, '/');
+  await click(small, '#nav-toggle');
+  await small.type('#drawer-search', 'punjab gk');
+  await Promise.all([
+    small.waitForNavigation({ waitUntil: 'networkidle0' }),
+    small.keyboard.press('Enter'),
+  ]);
+  check(
+    /\/search\/\?q=punjab\+gk|\/search\/\?q=punjab%20gk/.test(small.url()),
+    'menu search form works on a 320px phone',
+    small.url(),
+  );
+  await small.waitForSelector('#sr-r');
+  ok('...and lists matching free resources');
+  await small.close();
+}
+
+/* ============================================================ hero search */
+console.log('\nHome hero: video behind, search bar on the bottom edge');
+{
+  const page = await newPage(390);
+  await open(page, '/');
+  await sleep(600);
+  const geo = await page.evaluate(() => {
+    const panel = document.querySelector('[data-hero] .panel').getBoundingClientRect();
+    const bar = document.querySelector('[data-hero] form[role=search]').getBoundingClientRect();
+    const media = document.querySelector('[data-hero-media]').getBoundingClientRect();
+    const h1 = document.querySelector('[data-hero] h1').getBoundingClientRect();
+    return {
+      overlapsEdge: bar.top < panel.bottom && bar.bottom > panel.bottom,
+      centred: Math.abs(bar.left + bar.width / 2 - innerWidth / 2) <= 2,
+      mediaFillsPanel:
+        Math.abs(media.height - panel.height) <= 1 && Math.abs(media.width - panel.width) <= 1,
+      headlineAboveBar: h1.bottom < bar.top,
+      headlineLeft: h1.left < innerWidth / 4,
+    };
+  });
+  check(
+    geo.mediaFillsPanel,
+    'the video/poster layer fills the whole hero panel (text sits on top of it)',
+    JSON.stringify(geo),
+  );
+  check(geo.headlineLeft && geo.headlineAboveBar, 'headline is top-left, above the search bar');
+  check(
+    geo.centred && geo.overlapsEdge,
+    'search bar is centred on the bottom edge of the hero',
+    JSON.stringify(geo),
+  );
+
+  await page.click('#hero-search-input');
+  await page.waitForSelector('[data-hero] .filter-chip');
+  const chips = await page.$$eval('[data-hero] .filter-chip', (els) =>
+    els.map((e) => e.textContent.trim()),
+  );
+  check(
+    chips.join('|') === 'Patwari|PYQ|Admit card|Current affairs|Punjab GK',
+    'popular searches come from the admin content',
+    chips.join('|'),
+  );
+  await page.type('#hero-search-input', 'pyq');
+  await page.waitForSelector('#hero-search-list [role=option]');
+  const opts = await page.$$eval('#hero-search-list [role=option]', (els) =>
+    els.map((e) => e.textContent.trim()),
+  );
+  check(
+    opts.some((t) => /UPSC Prelims PYQ/.test(t)) && opts.at(-1).startsWith('See all'),
+    'typing shows live results with a "See all" row',
+    opts.join(' | ').slice(0, 120),
+  );
+  const o = await page.evaluate(() => {
+    document.documentElement.style.overflowX = 'visible';
+    document.body.style.overflowX = 'visible';
+    return { s: document.documentElement.scrollWidth, v: document.documentElement.clientWidth };
+  });
+  check(o.s <= o.v, 'no horizontal overflow with the hero results open', JSON.stringify(o));
+  if (SHOTS) await page.screenshot({ path: join(SHOTS, 'e2e-hero-search-390.png') });
+  await page.keyboard.press('Escape');
+  await sleep(150);
+  check(!(await page.$('#hero-search-list')), 'Escape closes the results');
+
+  await page.$eval('#hero-search-input', (el) => {
+    el.value = '';
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await page.type('#hero-search-input', 'aman gill');
+  await page.waitForSelector('#hero-search-opt-0');
+  await page.keyboard.press('ArrowDown');
+  await Promise.all([
+    page.waitForNavigation({ waitUntil: 'networkidle0' }),
+    page.keyboard.press('Enter'),
+  ]);
+  check(
+    /\/results\/\?q=Aman%20Gill/.test(page.url()),
+    'arrow + Enter on a student result opens it filtered',
+    page.url(),
+  );
+
+  await open(page, '/');
+  await sleep(600);
+  await page.type('#hero-search-input', 'patwari');
+  await Promise.all([
+    page.waitForNavigation({ waitUntil: 'networkidle0' }),
+    page.click('[data-hero] form[role=search] button[type=submit]'),
+  ]);
+  check(
+    /\/search\/\?q=patwari/.test(page.url()),
+    'the search button opens the full search page',
+    page.url(),
+  );
+  check(
+    page.errors.length === 0,
+    'no console errors with the hero search',
+    page.errors.join(' | '),
+  );
+  await page.close();
+
+  for (const w of [320, 360, 430, 768, 1440]) {
+    const p = await newPage(w, w < 700);
+    await open(p, '/');
+    await sleep(500);
+    await p.click('#hero-search-input');
+    await p.type('#hero-search-input', 'punjab');
+    await sleep(300);
+    const r = await p.evaluate(() => {
+      document.documentElement.style.overflowX = 'visible';
+      document.body.style.overflowX = 'visible';
+      return { s: document.documentElement.scrollWidth, v: document.documentElement.clientWidth };
+    });
+    check(r.s <= r.v, `hero search open: no horizontal overflow @${w}px`, JSON.stringify(r));
+    await p.close();
+  }
+
+  // without JavaScript the bar is still a working search form
+  const nojs = await newPage(390);
+  await nojs.setJavaScriptEnabled(false);
+  await nojs.goto(SITE + '/', { waitUntil: 'load' });
+  await nojs.type('#hero-search-input', 'pyq');
+  await Promise.all([nojs.waitForNavigation({ waitUntil: 'load' }), nojs.keyboard.press('Enter')]);
+  check(
+    /\/search\/\?q=pyq/.test(nojs.url()),
+    'with JavaScript off the hero search still opens /search/?q=',
+    nojs.url(),
+  );
+  await nojs.close();
+}
+
+/* ============================================================ topper reels */
+console.log('\nTopper reels (Instagram carousel)');
+{
+  const page = await newPage(390);
+  // keep the enquiry popup's 50%-scroll auto-open out of the way of this test
+  await page.evaluateOnNewDocument(() => sessionStorage.setItem('ccs_popup_shown', '1'));
+  await open(page, '/');
+  const pos = await page.evaluate(() => {
+    const reels = document.querySelector('[data-reels-root]');
+    const resources = document.querySelector('[data-carousel-root]');
+    const updates = [...document.querySelectorAll('h2')]
+      .find((h) => /exam update/i.test(h.textContent))
+      ?.closest('section');
+    const before = (a, b) =>
+      !!(a && b && a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    return {
+      exists: !!reels,
+      afterResources: before(resources, reels),
+      beforeUpdates: before(reels, updates),
+      cards: document.querySelectorAll('[data-reel]').length,
+    };
+  });
+  check(
+    pos.exists && pos.cards === 6,
+    'Home shows the reel carousel with one card per published reel',
+    JSON.stringify(pos),
+  );
+  check(
+    pos.afterResources && pos.beforeUpdates,
+    'it sits in the middle of the page (after Free Resources, before Exam Updates)',
+  );
+  const card = await page.$eval('[data-reel]', (b) => ({
+    w: Math.round(b.getBoundingClientRect().width),
+    h: Math.round(b.getBoundingClientRect().height),
+  }));
+  check(
+    card.w <= 160 && Math.abs(card.h / card.w - 16 / 9) < 0.03,
+    'cards are compact 9:16 tiles on phones',
+    JSON.stringify(card),
+  );
+  check(
+    (await page.$$('iframe[src*="instagram"]')).length === 0,
+    'no Instagram frame (and no third-party request) before a reel is tapped',
+  );
+
+  await page.evaluate(() => document.querySelector('[data-reels-root]').scrollIntoView());
+  await sleep(300);
+  await page.click('[data-reel]');
+  await page.waitForSelector('#reel-dialog[open] iframe');
+  const d = await page.evaluate(() => {
+    const dlg = document.getElementById('reel-dialog');
+    const f = dlg.querySelector('iframe');
+    const r = dlg.getBoundingClientRect();
+    return {
+      src: f.src,
+      sandbox: f.getAttribute('sandbox'),
+      link: dlg.querySelector('[data-reel-link]').href,
+      title: document.getElementById('reel-dialog-title').textContent,
+      fits: r.left >= 0 && r.right <= innerWidth && r.bottom <= innerHeight + 1,
+    };
+  });
+  check(
+    /^https:\/\/www\.instagram\.com\/reel\/SAMPLE_REEL_01\/embed\/$/.test(d.src),
+    'tapping a card loads that reel in the player',
+    d.src,
+  );
+  check(
+    d.sandbox.includes('allow-scripts') && !d.sandbox.includes('allow-top-navigation'),
+    'the Instagram frame is sandboxed (no top-level navigation)',
+    d.sandbox,
+  );
+  check(
+    d.link === 'https://www.instagram.com/reel/SAMPLE_REEL_01/' && d.title === 'Aman Gill',
+    'the player names the student and offers "Open on Instagram"',
+    JSON.stringify(d),
+  );
+  check(d.fits, 'the player fits the phone screen');
+  await page.keyboard.press('Escape');
+  await sleep(250);
+  check(
+    !page.errors.some((e) => /Refused to (frame|load|connect)/.test(e)),
+    'the Content-Security-Policy lets Instagram\'s player load (no "Refused to frame")',
+    page.errors.join(' | ').slice(0, 200),
+  );
+  check(
+    !(await page.$('#reel-dialog[open]')) && !(await page.$('#reel-dialog iframe')),
+    'Escape closes the player and removes the frame (playback stops)',
+  );
+
+  // swipe row: scrolls sideways inside itself, never the page
+  const sc = await page.$eval('[data-reels-track]', (t) => ({
+    scrolls: t.scrollWidth > t.clientWidth,
+    page: document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+  }));
+  check(
+    sc.scrolls && sc.page,
+    'the row swipes sideways without widening the page',
+    JSON.stringify(sc),
+  );
+
+  await open(page, '/results/');
+  check(
+    !!(await page.$('[data-reels-root]')) && !(await page.$('.lite-video')),
+    'the Results page shows the same carousel instead of a single video',
+  );
+  await page.close();
+
+  // desktop arrows
+  const wide = await newPage(1280, false);
+  await open(wide, '/');
+  const before = await wide.$eval('[data-reels-track]', (t) => t.scrollLeft);
+  await wide.evaluate(() => document.querySelector('[data-reels-next]').click());
+  await sleep(700);
+  const after = await wide.$eval('[data-reels-track]', (t) => t.scrollLeft);
+  check(after > before, 'desktop arrow scrolls the carousel', `${before} -> ${after}`);
+  await wide.close();
+
+  // admin: the Reels tab validates the link and saves a new reel
+  const ADMIN_TOKEN = (await api('login', { email: LOGIN, password: PASSWORD })).token;
+  const good = await api('saveContent', {
+    token: ADMIN_TOKEN,
+    path: 'reels/e2e-reel.json',
+    json: JSON.stringify({
+      instagram_url: 'https://www.instagram.com/reel/AbCdEfGh123/',
+      student_name: 'E2E Reel',
+      label: 'AIR 1 · TEST',
+      cover: '',
+      order: 99,
+      published: true,
+    }),
+    sha: '',
+  });
+  check(good.ok, 'the backend accepts content in the new reels folder');
+  const stored = await api('getContent', { token: ADMIN_TOKEN, path: 'reels/e2e-reel.json' });
+  await api('deleteContent', { token: ADMIN_TOKEN, path: 'reels/e2e-reel.json', sha: stored.sha });
+}
+
+/* ============================================================ right-click */
+console.log('\nRight-click is disabled on the public site');
+{
+  const page = await newPage(1280, false);
+  await open(page, '/');
+  const fire = (selector, type) =>
+    page.evaluate(
+      (sel, t) => {
+        const el = document.querySelector(sel);
+        const ev =
+          t === 'contextmenu'
+            ? new MouseEvent('contextmenu', { bubbles: true, cancelable: true })
+            : new Event(t, { bubbles: true, cancelable: true });
+        el.dispatchEvent(ev);
+        return ev.defaultPrevented;
+      },
+      selector,
+      type,
+    );
+  check(await fire('body', 'contextmenu'), 'the context menu is blocked on the page');
+  check(await fire('h1', 'contextmenu'), 'the context menu is blocked on text');
+  check(await fire('footer a', 'contextmenu'), 'the context menu is blocked on links');
+  check(await fire('main img, footer img', 'dragstart'), 'pictures cannot be dragged out');
+  // a real right-click, as a visitor would do it
+  await page.evaluate(() => {
+    window.__ctx = [];
+    document.addEventListener('contextmenu', (e) => window.__ctx.push(e.defaultPrevented));
+  });
+  await page.click('h1', { button: 'right' });
+  check(
+    (await page.evaluate(() => window.__ctx)).every(Boolean) &&
+      (await page.evaluate(() => window.__ctx.length)) === 1,
+    'a real right-click on the headline opens no menu',
+  );
+  // the enquiry form must stay usable: people paste their number
+  await click(page, '[data-hero] [data-open-enquiry]');
+  await page.waitForSelector('dialog[open] input[name=mobile]');
+  check(
+    (await fire('dialog[open] input[name=mobile]', 'contextmenu')) === false,
+    'text fields keep their menu so a phone number can be pasted',
+  );
+  await page.close();
+
+  const admin = await newPage(1280, false);
+  await open(admin, '/admin/');
+  check(
+    (await admin.evaluate(() => {
+      const ev = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
+      document.body.dispatchEvent(ev);
+      return ev.defaultPrevented;
+    })) === false,
+    'the admin panel is not affected',
+  );
+  await admin.close();
+}
+
+/* ============================================================ content lock */
+console.log('\nThe lock: the admin can change content, never layout or features');
+{
+  const readText = (p) => readFile(join(ROOT, 'src/content', p), 'utf8');
+  const exists = (p) => existsSync(join(ROOT, 'src/content', p));
+  const save = (path, obj, sha = '') =>
+    api('saveContent', { token, path, json: JSON.stringify(obj), sha });
+
+  // settings: the Free Tests switch belongs to the developer
+  const settingsText = await readText('settings/site.json');
+  const settings = JSON.parse(settingsText);
+  const cur = await api('getContent', { token, path: 'settings/site.json' });
+  const flipped = await save('settings/site.json', { ...settings, show_free_tests: true }, cur.sha);
+  const afterFlip = JSON.parse(await readText('settings/site.json'));
+  check(
+    flipped.ok && afterFlip.show_free_tests === settings.show_free_tests,
+    'a crafted request cannot switch Free Tests on: the stored value is kept',
+    String(afterFlip.show_free_tests),
+  );
+  const cur2 = await api('getContent', { token, path: 'settings/site.json' });
+  const extra = await save(
+    'settings/site.json',
+    { ...settings, layout: 'wide', custom_css: 'body{display:none}', script: '<script>1</script>' },
+    cur2.sha,
+  );
+  const cleaned = JSON.parse(await readText('settings/site.json'));
+  check(
+    extra.ok && !('layout' in cleaned) && !('custom_css' in cleaned) && !('script' in cleaned),
+    'fields the admin screen does not have (layout, css, scripts) are dropped, not stored',
+    Object.keys(cleaned).join(','),
+  );
+  const cur3 = await api('getContent', { token, path: 'settings/site.json' });
+  check(
+    !(await save('settings/site.json', { ...settings, map_url: 'javascript:alert(1)' }, cur3.sha))
+      .ok,
+    'a javascript: link is refused by the server, not only by the form',
+  );
+  check(
+    !(await save('settings/site.json', { ...settings, phone: '9'.repeat(200) }, cur3.sha)).ok,
+    'over-long text is refused by the server',
+  );
+  await writeFile(join(ROOT, 'src/content/settings/site.json'), settingsText); // leave no trace
+
+  // singleton pages cannot be deleted or duplicated
+  const home = await api('getContent', { token, path: 'home/home.json' });
+  check(
+    (await api('deleteContent', { token, path: 'home/home.json', sha: home.sha })).ok === false &&
+      exists('home/home.json'),
+    'home/home.json cannot be deleted (the site could not be built without it)',
+  );
+  check(
+    (await api('deleteContent', { token, path: 'settings/site.json', sha: cur3.sha })).ok ===
+      false && exists('settings/site.json'),
+    'settings/site.json cannot be deleted either',
+  );
+  check(
+    (await save('settings/another.json', settings)).ok === false &&
+      !exists('settings/another.json'),
+    'extra copies of a single-file page cannot be created',
+  );
+
+  // set-once choices
+  const course = {
+    name: 'E2E Lock',
+    price: '1',
+    category: 'Test series',
+    thumbnail: '',
+    published: true,
+  };
+  const made = await save('courses/e2e-lock.json', course);
+  const madeItem = await api('getContent', { token, path: 'courses/e2e-lock.json' });
+  await save('courses/e2e-lock.json', { ...course, category: 'Optional' }, madeItem.sha);
+  const kept = JSON.parse(await readText('courses/e2e-lock.json'));
+  check(
+    made.ok && kept.category === 'Test series',
+    "a course's category cannot be changed after it is created",
+    kept.category,
+  );
+  const fin = await api('getContent', { token, path: 'courses/e2e-lock.json' });
+  await api('deleteContent', { token, path: 'courses/e2e-lock.json', sha: fin.sha });
+
+  // the Admin screen itself shows no switch for it
+  const page = await newPage(1280, false);
+  await open(page, '/admin/');
+  await page.type('form.login input[type=text]', LOGIN);
+  await page.type('form.login input[type=password]', PASSWORD);
+  await page.click('form.login button[type=submit]');
+  await page.waitForSelector('.topbar');
+  await page.goto(`${SITE}/admin/#settings`);
+  await page.waitForSelector('fieldset.section input[type=text]');
+  const labels = await page.$$eval('fieldset.section label', (l) => l.map((x) => x.textContent));
+  check(
+    !labels.some((t) => /free tests/i.test(t)),
+    'Settings has no Free Tests switch (developer-only)',
+  );
+  await page.close();
+}
+
+/* ============================================================ admin */
+console.log('\nAdmin panel (1280px)');
+{
+  const page = await newPage(1280, false);
+  await open(page, '/admin/');
+  await page.waitForSelector('form.login');
+  await page.type('form.login input[type=text]', LOGIN);
+  await page.type('form.login input[type=password]', 'wrong-password');
+  await page.click('form.login button[type=submit]');
+  await page.waitForSelector('.login-error');
+  ok('wrong password shows an error');
+  await page.$eval('form.login input[type=password]', (el) => {
+    el.focus();
+    el.select();
+  });
+  await page.type('form.login input[type=password]', PASSWORD);
+  await page.click('form.login button[type=submit]');
+  await page.waitForSelector('.topbar');
+  ok('login works with the hardcoded credentials');
+  await page.waitForSelector('table.table-enq tbody tr');
+  const summary = await page.$$eval('table[aria-label="Enquiries by status"] td', (t) =>
+    t.map((x) => x.textContent),
+  );
+  check(
+    summary.length === 5 && Number(summary[4]) > 20,
+    'status summary table renders',
+    summary.join(','),
+  );
+  const tabsShown = await page.$$eval('.tabs .tab', (t) => t.map((x) => x.textContent));
+  check(
+    tabsShown.join('|') ===
+      'Enquiries|Home Page|Courses|Results|Reels|Teachers|Free Resources|Exam Updates|Landing Pages|Settings',
+    'tabs are in the specified order, Tests hidden',
+    tabsShown.join('|'),
+  );
+  if (SHOTS)
+    await page.screenshot({ path: join(SHOTS, 'e2e-admin-enquiries.png'), fullPage: false });
+
+  // filter + inline status
+  await page.type('input[type=search]', popupMobile);
+  await sleep(200);
+  const rowsAfter = await page.$$('table.table-enq tbody tr');
+  check(rowsAfter.length === 1, 'search filters the table', String(rowsAfter.length));
+  await page.select('table.table-enq tbody tr select', 'Contacted');
+  await page.waitForSelector('.tick');
+  ok('status change shows the Saved tick');
+  const updated = (await enquiryRows()).find((r) => r.mobile === popupMobile);
+  check(
+    updated.status === 'Contacted' && updated.updated_by === 'CCS Admin' && !!updated.last_updated,
+    'status persisted with Updated by + Last updated',
+  );
+  await page.click('.notes-btn');
+  await page.type('.notes-input', 'Called, wants evening batch');
+  await page.click('h1'); // blur
+  await sleep(600);
+  const noted = (await enquiryRows()).find((r) => r.mobile === popupMobile);
+  check(noted.notes === 'Called, wants evening batch', 'notes save on blur');
+
+  // Year of attempt is optional on the form, so the Year filter needs a "Not given" choice
+  await page.$eval('input[type=search]', (el) => {
+    el.value = '';
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  const pickYear = (value) =>
+    page.evaluate((v) => {
+      const select = [...document.querySelectorAll('.filters select')].find((x) =>
+        [...x.options].some((o) => o.textContent === 'Not given'),
+      );
+      select.value = v;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    }, value);
+  await pickYear('__none__');
+  await sleep(250);
+  const yearCells = await page.$$eval('table.table-enq tbody tr', (rows) =>
+    rows.map((r) => r.children[5].textContent.trim()),
+  );
+  check(
+    yearCells.length > 0 && yearCells.every((y) => y === '—'),
+    'the Year filter has "Not given" and shows only enquiries without a year',
+    `${yearCells.length} rows`,
+  );
+  await pickYear('');
+  await sleep(250);
+
+  // content CRUD: add + delete a course (first remove leftovers from any earlier aborted run)
+  for (const f of (await readdir(join(ROOT, 'src/content/courses'))).filter((x) =>
+    x.startsWith('e2e-test-course'),
+  ))
+    await rm(join(ROOT, 'src/content/courses', f));
+  await page.goto(`${SITE}/admin/#courses`);
+  await page.waitForSelector('table.table tbody tr');
+  const before = (await readdir(join(ROOT, 'src/content/courses'))).length;
+  await page.evaluate(() =>
+    [...document.querySelectorAll('button')]
+      .find((b) => /^Add course$/.test(b.textContent))
+      .click(),
+  );
+  await page.waitForSelector('.drawer input#f-name');
+  await page.type('#f-name', 'E2E Test Course');
+  await page.type('#f-price', '₹9,999');
+  await page.evaluate(() =>
+    [...document.querySelectorAll('.drawer-foot button')]
+      .find((b) => b.textContent === 'Save')
+      .click(),
+  );
+  await sleep(900);
+  const afterAdd = await readdir(join(ROOT, 'src/content/courses'));
+  const created = afterAdd.find((f) => f.startsWith('e2e-test-course'));
+  check(
+    afterAdd.length === before + 1 && !!created,
+    'adding a course writes a content file',
+    created,
+  );
+  const body = JSON.parse(await readFile(join(ROOT, 'src/content/courses', created), 'utf8'));
+  check(
+    body.name === 'E2E Test Course' &&
+      body.price === '₹9,999' &&
+      body.published === true &&
+      body.order > 6,
+    'new course has the right fields and appended order',
+    JSON.stringify(body),
+  );
+
+  // upload an image through the real admin UI (compress -> WebP -> upload)
+  const dataUrl = await page.evaluate(() => {
+    const c = document.createElement('canvas');
+    c.width = 1800;
+    c.height = 1200; // larger than 1600px so the resize path is exercised
+    const x = c.getContext('2d');
+    x.fillStyle = '#0042F6';
+    x.fillRect(0, 0, 1800, 1200);
+    x.fillStyle = '#FFB41F';
+    for (let i = 0; i < 40; i++) x.fillRect(i * 40, (i * 53) % 1100, 30, 90);
+    return c.toDataURL('image/png');
+  });
+  const png = Buffer.from(dataUrl.split(',')[1], 'base64');
+  const pngPath = join(ROOT, 'dist', 'e2e-test.png');
+  await writeFile(pngPath, png);
+  await page.waitForSelector('table.table tbody tr');
+  await page.evaluate((name) => {
+    const row = [...document.querySelectorAll('tbody tr')].find((r) =>
+      r.textContent.includes(name),
+    );
+    [...row.querySelectorAll('button')].find((b) => b.textContent === 'Edit').click();
+  }, 'E2E Test Course');
+  await page.waitForSelector('.drawer input[type=file]', { hidden: true });
+  const fileInput = await page.$('.drawer input[type=file]');
+  await fileInput.uploadFile(pngPath);
+  await page.waitForFunction(() => document.querySelector('.drawer img.imgprev'), {
+    timeout: 10000,
+  });
+  ok('image upload (compress to WebP) shows a preview');
+  const preview = await page.$eval('.drawer img.imgprev', (img) => ({
+    local: img.src.startsWith('data:image/webp'),
+    decoded: img.complete && img.naturalWidth > 0,
+  }));
+  check(
+    preview.local && preview.decoded,
+    'the preview comes from the bytes just uploaded (a live link would 404 until the site rebuilds)',
+    JSON.stringify(preview),
+  );
+  const toastText = await page.$$eval('.toast', (t) => t.map((x) => x.textContent).join(' | '));
+  check(
+    /optimised: .* → .* \(WebP, 900×600\)/.test(toastText),
+    'the admin is told what the optimiser did (size before and after, format, dimensions)',
+    toastText,
+  );
+  const uploads = (await readdir(join(ROOT, 'public/uploads/courses'))).filter((f) =>
+    f.startsWith('e2e-test'),
+  );
+  check(
+    uploads.length === 1 && uploads[0].endsWith('.webp'),
+    'uploaded file stored as .webp under public/uploads/courses',
+    uploads.join(','),
+  );
+  if (uploads[0]) {
+    const stored = await sharp(join(ROOT, 'public/uploads/courses', uploads[0])).metadata();
+    const bytes = (await readFile(join(ROOT, 'public/uploads/courses', uploads[0]))).length;
+    check(
+      stored.format === 'webp' &&
+        stored.width === 900 &&
+        stored.height === 600 &&
+        bytes < 300 * 1024,
+      "the stored picture is WebP, scaled to the field's 900 px width and under 300 KB",
+      `${stored.format} ${stored.width}x${stored.height} ${bytes} bytes`,
+    );
+  }
+  for (const f of uploads) await rm(join(ROOT, 'public/uploads/courses', f));
+  await rm(pngPath);
+
+  // delete the course through the UI
+  await page.evaluate(() =>
+    [...document.querySelectorAll('.drawer-head button')]
+      .find((b) => b.textContent === 'Close')
+      .click(),
+  );
+  await sleep(300);
+  page.on('dialog', (d) => d.accept());
+  await page.evaluate((name) => {
+    const row = [...document.querySelectorAll('tbody tr')].find((r) =>
+      r.textContent.includes(name),
+    );
+    [...row.querySelectorAll('button')].find((b) => b.textContent === 'Delete').click();
+  }, 'E2E Test Course');
+  await sleep(900);
+  check(
+    !existsSync(join(ROOT, 'src/content/courses', created)),
+    'deleting a course removes the content file',
+  );
+
+  // Reels tab: link validation + add + delete through the real UI
+  for (const f of (await readdir(join(ROOT, 'src/content/reels'))).filter((x) =>
+    x.startsWith('e2e-reel'),
+  ))
+    await rm(join(ROOT, 'src/content/reels', f));
+  await page.goto(`${SITE}/admin/#reels`);
+  await page.waitForSelector('table.table tbody tr');
+  const reelsBefore = (await readdir(join(ROOT, 'src/content/reels'))).length;
+  await page.evaluate(() =>
+    [...document.querySelectorAll('button')].find((b) => /^Add reel$/.test(b.textContent)).click(),
+  );
+  await page.waitForSelector('.drawer input#f-instagram_url');
+  // The drawer autofocuses its first field a moment after opening; without an explicit click the
+  // typed name is split between two inputs (that once saved a stray reel named "E").
+  await page.click('#f-student_name');
+  await page.type('#f-student_name', 'E2E Reel Student');
+  await page.type('#f-instagram_url', 'javascript:alert(1)');
+  await page.evaluate(() =>
+    [...document.querySelectorAll('.drawer-foot button')]
+      .find((b) => b.textContent === 'Save')
+      .click(),
+  );
+  await page.waitForFunction(() =>
+    [...document.querySelectorAll('.toast')].some(
+      (t) =>
+        /must start with https/.test(t.textContent) || /Instagram reel link/.test(t.textContent),
+    ),
+  );
+  check(
+    (await readdir(join(ROOT, 'src/content/reels'))).length === reelsBefore,
+    'a javascript: link is refused by the Reels form',
+  );
+  await page.$eval('#f-instagram_url', (el) => {
+    el.value = 'https://example.com/not-instagram';
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await page.evaluate(() =>
+    [...document.querySelectorAll('.drawer-foot button')]
+      .find((b) => b.textContent === 'Save')
+      .click(),
+  );
+  await sleep(500);
+  check(
+    (await readdir(join(ROOT, 'src/content/reels'))).length === reelsBefore,
+    'a non-Instagram link is refused',
+  );
+  await page.$eval('#f-instagram_url', (el) => {
+    el.value = 'https://www.instagram.com/reel/E2eReelCode1/?igsh=abc';
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await page.evaluate(() =>
+    [...document.querySelectorAll('.drawer-foot button')]
+      .find((b) => b.textContent === 'Save')
+      .click(),
+  );
+  let reelFile;
+  for (let i = 0; i < 30 && !reelFile; i++) {
+    await sleep(200);
+    reelFile = (await readdir(join(ROOT, 'src/content/reels'))).find((f) =>
+      f.startsWith('e2e-reel-student'),
+    );
+  }
+  check(!!reelFile, 'a valid Instagram link saves a new reel', reelFile);
+  const reelBody = JSON.parse(await readFile(join(ROOT, 'src/content/reels', reelFile), 'utf8'));
+  check(
+    reelBody.instagram_url.includes('E2eReelCode1') &&
+      reelBody.published === true &&
+      reelBody.order > 6,
+    'new reel is published and appended',
+    JSON.stringify(reelBody),
+  );
+  page.on('dialog', (d) => d.accept().catch(() => {}));
+  await page.evaluate(() => {
+    const row = [...document.querySelectorAll('tbody tr')].find((r) =>
+      r.textContent.includes('E2E Reel Student'),
+    );
+    [...row.querySelectorAll('button')].find((b) => b.textContent === 'Delete').click();
+  });
+  await sleep(900);
+  check(!existsSync(join(ROOT, 'src/content/reels', reelFile)), 'deleting a reel removes its file');
+
+  // landing page + settings + home render
+  for (const [hash, selector, name] of [
+    ['landing-pages', 'table.table tbody tr', 'Landing Pages'],
+    ['settings', '.section', 'Settings'],
+    ['home', 'form.stack', 'Home Page'],
+    ['resources', 'table.table tbody tr', 'Free Resources'],
+    ['exam-updates', 'table.table tbody tr', 'Exam Updates'],
+    ['teachers', 'table.table tbody tr', 'Teachers'],
+    ['results', 'table.table tbody tr', 'Results'],
+    ['reels', 'table.table tbody tr', 'Reels'],
+  ]) {
+    await page.goto(`${SITE}/admin/#${hash}`);
+    await page
+      .waitForSelector(selector, { timeout: 8000 })
+      .then(() => ok(`${name} tab loads`))
+      .catch(() => bad(`${name} tab loads`));
+  }
+  check(page.errors.length === 0, 'no console errors in admin', page.errors.join(' | '));
+  await page.click('.who button');
+  await page.waitForSelector('form.login');
+  ok('logout returns to the login screen');
+  await page.close();
+}
+
+/* ============================================================ admin responsiveness */
+console.log('\nAdmin has no horizontal page overflow (login + every tab)');
+for (const width of [360, 390, 768, 1024, 1280]) {
+  const page = await newPage(width, width < 700);
+  await open(page, '/admin/');
+  await page.waitForSelector('form.login');
+  const overflowOf = () =>
+    page.evaluate(() => {
+      const vw = document.documentElement.clientWidth;
+      document.documentElement.style.overflowX = 'visible';
+      document.body.style.overflowX = 'visible';
+      return { scrollW: document.documentElement.scrollWidth, vw };
+    });
+  let o = await overflowOf();
+  check(o.scrollW <= o.vw, `login @${width}px`, JSON.stringify(o));
+  await page.type('form.login input[type=text]', LOGIN);
+  await page.type('form.login input[type=password]', PASSWORD);
+  await page.click('form.login button[type=submit]');
+  await page.waitForSelector('.topbar');
+  for (const hash of [
+    'enquiries',
+    'home',
+    'courses',
+    'results',
+    'reels',
+    'teachers',
+    'resources',
+    'exam-updates',
+    'landing-pages',
+    'settings',
+  ]) {
+    await page.evaluate((h) => {
+      location.hash = h;
+    }, hash);
+    await sleep(700);
+    o = await overflowOf();
+    check(o.scrollW <= o.vw, `admin #${hash} @${width}px`, JSON.stringify(o));
+    if (SHOTS && width === 390 && ['enquiries', 'home'].includes(hash))
+      await page.screenshot({
+        path: join(SHOTS, `e2e-admin-${hash}-${width}.png`),
+        fullPage: true,
+      });
+    if (SHOTS && width === 1280)
+      await page.screenshot({ path: join(SHOTS, `e2e-admin-${hash}-${width}.png`) });
+  }
+  await page.close();
+}
+
+/* ============================================================ deploy watcher */
+console.log('\nAdmin: "live on the website" confirmation after a save');
+{
+  const page = await newPage(1280, false);
+  // Speed up the 15-second polling interval so the test does not have to wait.
+  await page.evaluateOnNewDocument(() => {
+    const real = window.setTimeout;
+    window.setTimeout = (fn, ms, ...a) => real(fn, ms === 15000 ? 200 : ms, ...a);
+  });
+  let builds = 0;
+  await page.setRequestInterception(true);
+  page.on('request', async (req) => {
+    const url = req.url();
+    if (url.includes('/build.json')) {
+      builds++;
+      return req.respond({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ id: builds <= 1 ? 'build-A' : 'build-B' }),
+      });
+    }
+    if (
+      req.method() === 'POST' &&
+      url.startsWith(API) &&
+      /action=saveContent/.test(req.postData() ?? '')
+    ) {
+      // behave like production: the real backend does not say "local"
+      const r = await fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: req.postData(),
+      });
+      const body = await r.json();
+      delete body.local;
+      return req.respond({
+        status: 200,
+        contentType: 'application/json',
+        headers: { 'Access-Control-Allow-Origin': '*' },
+        body: JSON.stringify(body),
+      });
+    }
+    return req.continue();
+  });
+  await open(page, '/admin/');
+  await page.waitForSelector('form.login');
+  await page.type('form.login input[type=text]', LOGIN);
+  await page.type('form.login input[type=password]', PASSWORD);
+  await page.click('form.login button[type=submit]');
+  await page.waitForSelector('.topbar');
+  await page.evaluate(() => {
+    location.hash = 'courses';
+  });
+  await page.waitForSelector('table.table tbody tr input[type=checkbox]');
+  const toggle = async () => {
+    await page.evaluate(() =>
+      document.querySelector('table.table tbody tr input[type=checkbox]').click(),
+    );
+  };
+  await toggle();
+  await page.waitForFunction(() =>
+    [...document.querySelectorAll('.toast')].some((t) =>
+      /Live on the website in about 2 minutes/.test(t.textContent),
+    ),
+  );
+  ok('save shows "Saved. Live on the website in about 2 minutes."');
+  await page.waitForFunction(
+    () => [...document.querySelectorAll('.toast')].some((t) => /Live now/.test(t.textContent)),
+    { timeout: 15000 },
+  );
+  ok('a changed /build.json id triggers the "Live now" confirmation');
+  await sleep(700);
+  await toggle(); // put the course back
+  await sleep(900);
+  await page.close();
+}
+
+/* ============================================================ admin hardening */
+console.log('\nAdmin hardening: forced password change + anti-framing');
+{
+  const ADMINS = join(ROOT, 'dev-server/data/admins.json');
+  const original = await readFile(ADMINS, 'utf8');
+  try {
+    const salt = 'e2e-salt-0123456789abcdef';
+    const list = JSON.parse(original);
+    list.push({
+      email: 'e2e.temp',
+      name: 'E2E Temp',
+      salt,
+      password_hash: createHash('sha256')
+        .update(salt + 'Temp#Pass1')
+        .digest('hex'),
+      active: true,
+      must_change: true,
+    });
+    await writeFile(ADMINS, JSON.stringify(list, null, 2));
+
+    const page = await newPage(390);
+    await open(page, '/admin/');
+    await page.waitForSelector('form.login');
+    await page.type('form.login input[type=text]', 'e2e.temp');
+    await page.type('form.login input[type=password]', 'Temp#Pass1');
+    await page.click('form.login button[type=submit]');
+    await page.waitForFunction(
+      () => document.querySelector('.login h1')?.textContent === 'Choose a new password',
+    );
+    check(
+      !(await page.$('.topbar')),
+      'temporary password only leads to the "choose a new password" screen',
+    );
+    await page.evaluate(() => {
+      location.hash = 'settings';
+    });
+    await sleep(300);
+    check(
+      !(await page.$('.topbar')),
+      'other admin screens stay locked until the password is changed',
+    );
+    const tok = await page.evaluate(
+      () => JSON.parse(sessionStorage.getItem('ccs_admin_session')).token,
+    );
+    check(
+      (await api('listEnquiries', { token: tok })).code === 'must_change',
+      'the API refuses every other action with that token',
+    );
+    const [oldBox, newBox, againBox] = await page.$$('form.login input[type=password]');
+    await oldBox.type('Temp#Pass1');
+    await newBox.type('Temp#Pass1');
+    await againBox.type('Temp#Pass1');
+    await page.click('form.login button[type=submit]');
+    await page.waitForSelector('.login-error');
+    check(
+      /different/.test(await page.$eval('.login-error', (e) => e.textContent)),
+      'reusing the temporary password is refused',
+    );
+    await newBox.click({ clickCount: 3 });
+    await page.keyboard.press('Backspace');
+    await againBox.click({ clickCount: 3 });
+    await page.keyboard.press('Backspace');
+    await page.$eval('form.login input[autocomplete=new-password]', (el) => {
+      el.value = '';
+    });
+    await page.$$eval('form.login input[autocomplete=new-password]', (els) =>
+      els.forEach((el) => {
+        el.value = 'Better#Pass2';
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+      }),
+    );
+    await page.click('form.login button[type=submit]');
+    await page.waitForSelector('.topbar', { timeout: 8000 });
+    ok('after choosing a new password the admin panel opens');
+    check(
+      (await api('login', { email: 'e2e.temp', password: 'Temp#Pass1' })).ok === false &&
+        (await api('login', { email: 'e2e.temp', password: 'Better#Pass2' })).ok,
+      'old temporary password no longer works; the new one does',
+    );
+    await page.close();
+
+    const host = await newPage(1000, false);
+    await host.setContent(`<iframe id="f" src="${SITE}/admin/" width="800" height="500"></iframe>`);
+    await sleep(1500);
+    const inner = host.frames().find((f) => f.url().includes('/admin/'));
+    const text = await inner.evaluate(() => document.body.innerText);
+    check(
+      /cannot be displayed inside another page/.test(text) && !/Admin login/.test(text),
+      'the admin refuses to run inside a frame (clickjacking guard)',
+      text.slice(0, 80),
+    );
+    await host.close();
+  } finally {
+    await writeFile(ADMINS, original);
+  }
+}
+
+/* ============================================================ security edge cases */
+console.log('\nSecurity edge cases (API)');
+{
+  check((await api('listEnquiries')).code === 'auth', 'no token: rejected');
+  check(
+    (await api('listEnquiries', { token: `${token.split('.')[0]}.${'0'.repeat(64)}` })).code ===
+      'auth',
+    'tampered signature: rejected',
+  );
+  const sig = token.split('.')[1];
+  const forged = Buffer.from('admin.ccs.chandigar|99999999999999').toString('base64url');
+  check(
+    (await api('listEnquiries', { token: `${forged}.${sig}` })).code === 'auth',
+    'forged expiry with a real signature: rejected',
+  );
+  for (const path of [
+    '../package.json',
+    'courses/../../package.json',
+    '/etc/passwd',
+    'courses/x.json%00.png',
+    'courses/.json',
+    'secrets/x.json',
+  ]) {
+    const r = await api('saveContent', { token, path, json: '{}', sha: '' });
+    check(!r.ok, `saveContent rejects path "${path}"`);
+  }
+  check(
+    !(await api('saveContent', { token, path: 'courses/x.json', json: '[]', sha: '' })).ok,
+    'saveContent rejects non-object JSON',
+  );
+  check(
+    !(
+      await api('saveContent', {
+        token,
+        path: 'courses/x.json',
+        json: '{"__proto__":{"a":1}}',
+        sha: '',
+      })
+    ).ok,
+    'saveContent rejects __proto__ keys',
+  );
+  check(
+    !(
+      await api('saveContent', {
+        token,
+        path: 'landing-pages/zzz.json',
+        json: '{"slug":"other"}',
+        sha: '',
+      })
+    ).ok,
+    'landing page slug must match file name',
+  );
+  const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>').toString(
+    'base64',
+  );
+  check(
+    !(await api('uploadFile', { token, folder: 'courses', filename: 'a.webp', base64: svg })).ok,
+    'uploading an SVG disguised as .webp is rejected (checked by file bytes)',
+  );
+  check(
+    !(await api('uploadFile', { token, folder: '../..', filename: 'a.webp', base64: svg })).ok,
+    'upload folder allow-list enforced',
+  );
+  const dupe = freshMobile();
+  const post = () =>
+    api('submitEnquiry', {
+      name: '=cmd|calc',
+      mobile: dupe,
+      exam: 'UPSC CSE',
+      year: '2027',
+      consent: 'yes',
+      source: 'popup',
+    });
+  check((await post()).ok, 'formula-looking name accepted');
+  const stored = (await enquiryRows()).find((r) => r.mobile === dupe);
+  check(stored.name.startsWith("'="), 'formula-looking name stored neutralised', stored.name);
+  check((await post()).code === 'duplicate', 'same mobile within 10 minutes is a duplicate');
+  const hp = await api('submitEnquiry', {
+    name: 'Bot',
+    mobile: freshMobile(),
+    exam: 'UPSC CSE',
+    year: '2027',
+    consent: 'yes',
+    website: 'http://spam',
+  });
+  check(
+    hp.ok && !(await enquiryRows()).some((r) => r.name === 'Bot'),
+    'honeypot hit is silently dropped',
+  );
+  check(
+    !(
+      await api('submitEnquiry', {
+        name: 'X',
+        mobile: '1234567890',
+        exam: 'UPSC CSE',
+        year: '2027',
+        consent: 'yes',
+      })
+    ).ok,
+    'server validates the mobile number format',
+  );
+  const lock = [];
+  for (let i = 0; i < 6; i++)
+    lock.push((await api('login', { email: 'lockout.test', password: 'nope' })).code);
+  check(lock[5] === 'locked', 'login locks after 5 failed attempts');
+}
+
+await browser.close();
+close();
+console.log(`\n${fail ? 'FAILED' : 'PASSED'}: ${pass} passed, ${fail} failed`);
+process.exit(fail ? 1 : 0);

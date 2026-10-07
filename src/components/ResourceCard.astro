@@ -1,0 +1,68 @@
+---
+import Icon from './Icon.astro';
+import { withBase, safeHref } from '../lib/site';
+interface Props {
+  resource: {
+    id: string;
+    data: {
+      title: string;
+      subtitle: string;
+      category: string;
+      type: string;
+      file: string;
+      url: string;
+    };
+  };
+  class?: string;
+  level?: 2 | 3;
+}
+const { resource, class: cls = '', level = 3 } = Astro.props;
+const Heading = `h${level}` as 'h2' | 'h3';
+const { title, subtitle, category, type, file, url } = resource.data;
+const href = file ? withBase(file) : safeHref(url);
+const tones: Record<string, string> = {
+  'Notes & PDFs': 'bg-mint',
+  PYQs: 'bg-lavender',
+  'Current Affairs': 'bg-sky',
+  Videos: 'bg-peach',
+  'Punjab GK': 'bg-sand',
+};
+const icon = type === 'video' ? 'video' : type === 'link' ? 'link' : 'file-text';
+const action = type === 'video' ? 'Watch' : type === 'link' ? 'Open' : 'Download';
+const typeLabel = type === 'video' ? 'Video' : type === 'link' ? 'Link' : 'PDF';
+---
+
+<article
+  class:list={[
+    'flex h-full flex-col rounded-[18px] p-4 md:rounded-[28px] md:p-6',
+    tones[category] ?? 'bg-panel',
+    cls,
+  ]}
+  data-item
+  data-category={category}
+  data-search={`${title} ${subtitle} ${category}`.toLowerCase()}
+>
+  <div class="mb-3 flex items-center justify-between md:mb-8">
+    <span class="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white md:h-12 md:w-12">
+      <Icon name={icon} size={22} />
+    </span>
+    <span class="chip chip-line !bg-white/60">{typeLabel}</span>
+  </div>
+  <Heading class="h3 mb-1 !text-[18px] !leading-[1.1] md:mb-2 md:!text-[24px]">{title}</Heading>
+  {subtitle && <p class="text-[13px] text-muted md:text-[15px]">{subtitle}</p>}
+  {href && (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      class="btn btn-dark btn-sm mt-4 self-start md:mt-6"
+      {...(type !== 'video' && type !== 'link' && file ? { download: '' } : {})}
+    >
+      <Icon
+        name={type === 'video' ? 'play' : type === 'link' ? 'external-link' : 'download'}
+        size={16}
+      />
+      {action}
+    </a>
+  )}
+</article>

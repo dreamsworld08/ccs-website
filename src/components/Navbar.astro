@@ -1,0 +1,179 @@
+---
+import Icon from './Icon.astro';
+import NavSearch from '../islands/NavSearch';
+import { withBase, telLink } from '../lib/site';
+import type { getSettings } from '../lib/site';
+
+interface Props {
+  settings: Awaited<ReturnType<typeof getSettings>>;
+}
+const { settings } = Astro.props;
+
+const links = [
+  { href: '/', label: 'Home' },
+  { href: '/about-teachers', label: 'About the Teachers' },
+  { href: '/courses', label: 'Courses' },
+  { href: '/results', label: 'Results' },
+  { href: '/free-resources', label: 'Free Resources' },
+  ...(settings.show_free_tests ? [{ href: '/free-tests', label: 'Free Tests' }] : []),
+  { href: '/exam-updates', label: 'Exam Updates' },
+];
+
+const current = Astro.url.pathname.replace(withBase('/').replace(/\/$/, ''), '') || '/';
+const isActive = (href: string) =>
+  href === '/' ? current === '/' : current === href || current.startsWith(`${href}/`);
+---
+
+<header class="sticky top-0 z-50 bg-white/92 backdrop-blur-md">
+  <a
+    href="#main"
+    class="sr-only-x focus:!static focus:!w-auto focus:!h-auto focus:!m-2 focus:!p-3 focus:!clip-auto focus:bg-ink focus:text-white focus:rounded-full focus:inline-block"
+  >
+    Skip to content
+  </a>
+  <div class="container-x flex h-[68px] items-center justify-between gap-2 sm:gap-4">
+    <a
+      href={withBase('/')}
+      class="inline-flex shrink-0 items-center"
+      aria-label="Chandigarh Civil Services, home"
+    >
+      <img
+        src={withBase('/logo.svg')}
+        alt="Chandigarh Civil Services"
+        width="150"
+        height="36"
+        class="h-8 w-auto sm:h-9"
+      />
+    </a>
+
+    <nav class="hidden lg:flex items-center gap-1" aria-label="Main">
+      {links.map((l) => (
+        <a
+          href={withBase(l.href)}
+          class:list={[
+            'px-3.5 py-2 rounded-full text-[15px] font-medium transition-colors',
+            isActive(l.href) ? 'bg-panel text-ink' : 'text-ink hover:bg-panel',
+          ]}
+          aria-current={isActive(l.href) ? 'page' : undefined}
+        >
+          {l.label}
+        </a>
+      ))}
+    </nav>
+
+    <div class="flex shrink-0 items-center gap-2">
+      <a
+        href={telLink(settings.phone)}
+        class="hidden xl:inline-flex items-center gap-2 px-3 py-2 rounded-full text-[15px] mono font-medium hover:bg-panel"
+        aria-label={`Call ${settings.phone}`}
+      >
+        <Icon name="phone" size={16} />
+        {settings.phone}
+      </a>
+      <NavSearch client:idle searchUrl={withBase('/search/')} />
+      <button
+        type="button"
+        class="btn btn-primary btn-sm !min-h-11 !px-4"
+        data-open-enquiry
+        data-exam=""
+      >
+        <span>
+          Enquire<span class="hidden min-[440px]:inline"> now</span>
+        </span>
+      </button>
+      <button
+        type="button"
+        id="nav-toggle"
+        class="lg:hidden inline-flex h-11 w-11 items-center justify-center rounded-full bg-panel"
+        aria-expanded="false"
+        aria-controls="nav-drawer"
+        aria-label="Open menu"
+      >
+        <span data-icon-open>
+          <Icon name="menu" size={22} />
+        </span>
+        <span data-icon-close hidden>
+          <Icon name="x" size={22} />
+        </span>
+      </button>
+    </div>
+  </div>
+
+  <div
+    id="nav-drawer"
+    class="lg:hidden fixed inset-x-0 top-[68px] bottom-0 z-40 bg-white overflow-y-auto"
+    hidden
+  >
+    <nav class="container-x py-6 grid gap-1" aria-label="Mobile">
+      <form role="search" action={withBase('/search/')} method="get" class="relative mb-3">
+        <label class="sr-only-x" for="drawer-search">
+          Search free resources, exam updates and results
+        </label>
+        <span class="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted">
+          <Icon name="search" size={20} />
+        </span>
+        <input
+          id="drawer-search"
+          name="q"
+          type="search"
+          class="input !rounded-full !pl-12"
+          placeholder="Search resources, updates, results"
+          autocomplete="off"
+          enterkeyhint="search"
+          maxlength="80"
+        />
+      </form>
+      {links.map((l) => (
+        <a
+          href={withBase(l.href)}
+          class:list={[
+            'font-heading font-bold uppercase text-[34px] leading-[1.05] py-3 border-b border-line',
+            isActive(l.href) ? 'text-primary' : 'text-ink',
+          ]}
+          aria-current={isActive(l.href) ? 'page' : undefined}
+        >
+          {l.label}
+        </a>
+      ))}
+      <div class="mt-6 grid gap-3">
+        <a href={telLink(settings.phone)} class="btn btn-secondary">
+          <Icon name="phone" size={18} />
+          {settings.phone}
+        </a>
+        <button type="button" class="btn btn-primary" data-open-enquiry data-exam="">
+          Enquire now
+        </button>
+      </div>
+    </nav>
+  </div>
+</header>
+
+<script>
+  const toggle = document.getElementById('nav-toggle');
+  const drawer = document.getElementById('nav-drawer');
+  if (toggle && drawer) {
+    const setOpen = (open: boolean) => {
+      drawer.hidden = !open;
+      toggle.setAttribute('aria-expanded', String(open));
+      toggle.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+      toggle.querySelector<HTMLElement>('[data-icon-open]')!.hidden = open;
+      toggle.querySelector<HTMLElement>('[data-icon-close]')!.hidden = !open;
+      document.body.style.overflow = open ? 'hidden' : '';
+      document.body.dataset.navOpen = String(open);
+    };
+    toggle.addEventListener('click', () => setOpen(drawer.hasAttribute('hidden')));
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !drawer.hasAttribute('hidden')) {
+        setOpen(false);
+        toggle.focus();
+      }
+    });
+    // Opening the enquiry popup or following a link closes the drawer.
+    drawer.addEventListener('click', (e) => {
+      if ((e.target as Element).closest('a,[data-open-enquiry]')) setOpen(false);
+    });
+    window
+      .matchMedia('(min-width: 1024px)')
+      .addEventListener('change', (m) => m.matches && setOpen(false));
+  }
+</script>

@@ -1,0 +1,66 @@
+# Builds the site and publishes it with GitHub Pages.
+# One-time: repo Settings > Pages > Build and deployment > Source: "GitHub Actions".
+#
+# Runs on every push to main, which includes the commits the admin panel makes when staff save
+# content (Apps Script commits through the GitHub API). A save goes live in about 1-2 minutes.
+#
+# SITE_URL / BASE_PATH come from repository variables (Settings > Secrets and variables > Actions > Variables).
+# Leave them unset to deploy to https://<owner>.github.io/<repo>/.
+# For the client's own domain set  SITE_URL=https://www.example.in  and  BASE_PATH=/  (and add public/CNAME).
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# A newer save supersedes an older build that is still running.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      # The backend's content lock is generated from src/admin/schemas.ts. Fails (and keeps the old site
+      # live) if the schema was changed without running `npm run rules`.
+      - run: npm run rules -- --check
+
+      # Fails the build (and keeps the old site live) if code or content is broken.
+      - run: npm run check
+
+      - run: npm run build
+        env:
+          SITE_URL: ${{ vars.SITE_URL || format('https://{0}.github.io', github.repository_owner) }}
+          BASE_PATH: ${{ vars.BASE_PATH || format('/{0}/', github.event.repository.name) }}
+          # Lets /build.json report which commit is live (the admin polls it after a save).
+          GITHUB_SHA: ${{ github.sha }}
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,43 @@
+---
+import Icon from '../Icon.astro';
+import Img from '../Img.astro';
+import { withBase } from '../../lib/site';
+import type { getHome } from '../../lib/site';
+interface Props {
+  home: Awaited<ReturnType<typeof getHome>>;
+}
+const { home } = Astro.props;
+---
+
+<section class="panel bg-panel">
+  <div class="container-x section-pad grid items-center gap-5 md:gap-14 lg:grid-cols-[minmax(0,460px)_1fr]">
+    <figure class="flex w-full max-w-[460px] items-center gap-4 md:relative md:mx-auto md:block lg:max-w-none">
+      <div class="relative aspect-square w-24 shrink-0 overflow-hidden rounded-[18px] bg-white md:aspect-[4/5] md:w-full md:rounded-[28px]">
+        {home.founder_photo && (
+          <Img
+            src={home.founder_photo}
+            alt={`${home.founder_name}, ${home.founder_designation}`}
+            width={600}
+            height={750}
+            sizes="(min-width: 1024px) 460px, (min-width: 768px) 90vw, 96px"
+            class="absolute inset-0 h-full w-full object-cover object-top"
+          />
+        )}
+      </div>
+      <figcaption class="md:absolute md:bottom-4 md:left-4 md:right-4 md:rounded-[20px] md:bg-white/95 md:px-5 md:py-4 md:backdrop-blur">
+        <p class="h3">{home.founder_name}</p>
+        <p class="mono mt-1 text-[12px] uppercase tracking-wider text-muted">
+          {home.founder_designation}
+        </p>
+      </figcaption>
+    </figure>
+    <div class="min-w-0">
+      <span class="chip chip-kicker mb-5">{home.founder_kicker}</span>
+      <h2 class="h2 mb-6">{home.founder_headline}</h2>
+      <p class="mb-8 max-w-[640px] text-[16px] text-muted md:text-[19px]">{home.founder_message}</p>
+      <a href={withBase('/about-teachers')} class="btn btn-dark">
+        Meet our teachers <Icon name="arrow-right" size={18} />
+      </a>
+    </div>
+  </div>
+</section>

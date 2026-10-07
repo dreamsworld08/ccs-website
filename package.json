@@ -1,0 +1,50 @@
+{
+  "name": "ccs-website",
+  "type": "module",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Chandigarh Civil Services - informational website with enquiry capture and a table-only admin",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:site": "astro dev",
+    "dev:api": "node dev-server/server.mjs",
+    "build": "astro build",
+    "preview": "astro preview",
+    "check": "astro check",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "placeholders": "node scripts/make-placeholders.mjs",
+    "hash": "node scripts/hash-password.mjs",
+    "check:layout": "node scripts/check-layout.mjs",
+    "build:local": "PUBLIC_BACKEND_URL=http://localhost:8787 astro build",
+    "e2e": "node scripts/e2e.mjs",
+    "test:gs": "node scripts/test-code-gs.mjs",
+    "rules": "node scripts/content-rules.mjs",
+    "test:images": "node scripts/test-images.mjs",
+    "prune:uploads": "node scripts/prune-uploads.mjs"
+  },
+  "dependencies": {
+    "@astrojs/preact": "^6.0.5",
+    "@astrojs/sitemap": "^3.7.4",
+    "@tailwindcss/vite": "^4.3.3",
+    "astro": "^7.3.5",
+    "lucide-static": "^1.52.0",
+    "preact": "^10.29.8",
+    "sharp": "^0.35.5",
+    "tailwindcss": "^4.3.3"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.10",
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.12.0",
+    "eslint-plugin-astro": "^3.2.1",
+    "prettier": "^3.9.9",
+    "prettier-plugin-astro": "^1.1.0",
+    "puppeteer-core": "^25.12.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.71.0"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}

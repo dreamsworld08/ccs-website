@@ -1,0 +1,12 @@
+{
+  "student_name": "Ankit Chauhan",
+  "exam": "PSSSB Clerk",
+  "exam_year": "2025",
+  "rank_label": "Rank 12",
+  "photo": "/uploads/placeholders/person-3.svg",
+  "quote": "Typing and GK practice built my speed.",
+  "show_on_home": false,
+  "order": 11,
+  "published": true,
+  "dummy": true
+}

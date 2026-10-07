@@ -1,0 +1,55 @@
+---
+import Base from '../layouts/Base.astro';
+import PageHeader from '../components/PageHeader.astro';
+import ExamUpdateRow from '../components/ExamUpdateRow.astro';
+import FilterChips from '../components/FilterChips.astro';
+import ExamUpdatesSignup from '../islands/ExamUpdatesSignup';
+import { getExamUpdates, getSettings } from '../lib/site';
+
+const [updates, settings] = await Promise.all([getExamUpdates(), getSettings()]);
+const order = ['Notification', 'Exam date', 'Admit card', 'Answer key', 'Result', 'Syllabus'];
+const cats = order.filter((c) => updates.some((u) => u.data.category === c));
+---
+
+<Base
+  title="Exam Updates"
+  description="Latest UPSC, PPSC, PSSSB and Punjab Police notifications, exam dates, admit cards, answer keys, results and syllabus."
+>
+  <PageHeader
+    kicker="Exam updates"
+    title="Latest exam updates"
+    text="Notifications, dates, admit cards, answer keys and results from UPSC, PPSC, PSSSB and Punjab Police in one place."
+    tone="sky"
+  >
+    <div slot="aside">
+      <ExamUpdatesSignup
+        client:visible
+        tone="light"
+        idPrefix="eu-page"
+        whatsapp={settings.whatsapp_number}
+        phone={settings.phone}
+      />
+    </div>
+  </PageHeader>
+
+  <section class="panel bg-white border border-line" data-list-filter>
+    <div class="container-x section-pad">
+      <div class="mb-6">
+        <FilterChips field="category" options={cats} label="Filter updates by category" />
+      </div>
+      <ul class="border-t border-line">
+        {updates.map((u) => (
+          <ExamUpdateRow update={u} />
+        ))}
+      </ul>
+      <p class="mt-8 text-muted" data-empty hidden>
+        No updates in this category yet.
+      </p>
+    </div>
+  </section>
+</Base>
+
+<script>
+  import { initListFilters } from '../scripts/list-filter';
+  initListFilters();
+</script>

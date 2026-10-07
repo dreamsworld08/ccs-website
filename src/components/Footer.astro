@@ -1,0 +1,174 @@
+---
+import Icon from './Icon.astro';
+import { withBase, telLink, getCourses, getLandingPages, safeHref } from '../lib/site';
+import type { getSettings } from '../lib/site';
+
+interface Props {
+  settings: Awaited<ReturnType<typeof getSettings>>;
+}
+const { settings } = Astro.props;
+
+const courses = await getCourses();
+const programs = (await getLandingPages()).filter((p) => p.data.show_on_main_site);
+
+const palette = [
+  'text-saffron',
+  'text-[#7DE08D]',
+  'text-[#9DB7FF]',
+  'text-[#FF9C80]',
+  'text-[#C3B8FF]',
+  'text-[#8FD3FF]',
+];
+const marquee = [
+  ...courses.map((c) => c.data.name),
+  'UPSC CSE',
+  'Punjab PCS',
+  'Patwari',
+  'Naib Tehsildar',
+  'Excise & Taxation',
+  'PSSSB',
+  'Punjab Police',
+];
+
+const explore = [
+  { href: '/', label: 'Home' },
+  { href: '/about-teachers', label: 'About the Teachers' },
+  { href: '/courses', label: 'Courses' },
+  { href: '/results', label: 'Results' },
+];
+const resources = [
+  { href: '/free-resources', label: 'Free Resources' },
+  { href: '/exam-updates', label: 'Exam Updates' },
+  ...(settings.show_free_tests ? [{ href: '/free-tests', label: 'Free Tests' }] : []),
+  { href: '/privacy-policy', label: 'Privacy Policy' },
+];
+const exams = [
+  { href: '/courses', label: 'UPSC CSE' },
+  { href: '/courses', label: 'Punjab PSC (PCS)' },
+  { href: '/courses', label: 'Punjab One Day Exams' },
+];
+const programLinks = programs.length
+  ? programs.map((p) => ({
+      href: `/lp/${p.data.slug}`,
+      label: p.data.internal_name || p.data.hero_headline,
+    }))
+  : courses.slice(0, 3).map((c) => ({ href: '/courses', label: c.data.name }));
+const socials = [
+  { url: settings.instagram_url, icon: 'instagram', label: 'Instagram' },
+  { url: settings.youtube_url, icon: 'youtube', label: 'YouTube' },
+  { url: settings.telegram_url, icon: 'send', label: 'Telegram' },
+]
+  .map((s) => ({ ...s, url: safeHref(s.url) }))
+  .filter((s) => s.url);
+
+const columns = [
+  { title: 'Explore', items: explore },
+  { title: 'Resources', items: resources },
+  { title: 'Exams', items: exams },
+  { title: 'Programs', items: programLinks },
+];
+---
+
+<footer class="px-2 pb-2">
+  <div class="panel bg-ink text-white on-dark">
+    <div class="container-x pt-14 md:pt-20 pb-8">
+      <div class="grid gap-12 lg:grid-cols-[1.1fr_1.6fr]">
+        <div>
+          <img
+            src={withBase('/logo-light.svg')}
+            alt="Chandigarh Civil Services"
+            width="168"
+            height="40"
+            class="h-10 w-auto mb-6"
+            loading="lazy"
+          />
+          <address class="not-italic grid gap-3 text-white/80 text-[16px]">
+            <span class="flex gap-3">
+              <Icon name="map-pin" size={18} class="mt-1 shrink-0" />
+              {safeHref(settings.map_url) ? (
+                <a
+                  class="hover:text-white underline-offset-4 hover:underline"
+                  href={safeHref(settings.map_url)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {settings.address}
+                </a>
+              ) : (
+                settings.address
+              )}
+            </span>
+            <a class="flex gap-3 hover:text-white" href={telLink(settings.phone)}>
+              <Icon name="phone" size={18} class="mt-1 shrink-0" />
+              <span class="mono">{settings.phone}</span>
+            </a>
+            <a class="flex gap-3 hover:text-white" href={`mailto:${settings.email}`}>
+              <Icon name="mail" size={18} class="mt-1 shrink-0" />
+              {settings.email}
+            </a>
+          </address>
+          <div class="flex gap-2 mt-6">
+            {socials.map((s) => (
+              <a
+                href={s.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={s.label}
+                class="inline-flex h-11 w-11 items-center justify-center rounded-full bg-white/10 hover:bg-white hover:text-ink transition-colors"
+              >
+                <Icon name={s.icon} size={20} />
+              </a>
+            ))}
+          </div>
+        </div>
+        <nav class="grid grid-cols-2 sm:grid-cols-4 gap-8" aria-label="Footer">
+          {columns.map((col) => (
+            <div>
+              <p class="mono text-[12px] uppercase tracking-wider text-white/55 mb-4">
+                {col.title}
+              </p>
+              <ul class="grid gap-2.5">
+                {col.items.map((i) => (
+                  <li>
+                    <a
+                      class="text-[15px] text-white/90 hover:text-white hover:underline underline-offset-4"
+                      href={withBase(i.href)}
+                    >
+                      {i.label}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </nav>
+      </div>
+    </div>
+
+    <div class="marquee overflow-hidden border-y border-white/10 py-4 md:py-5" aria-hidden="true">
+      <div class="marquee-track font-heading font-bold uppercase text-[30px] md:text-[44px] leading-none">
+        {[0, 1].map(() => (
+          <div class="marquee-set flex shrink-0 items-center">
+            {marquee.map((m, i) => (
+              <span class="flex items-center">
+                <span class={palette[i % palette.length]}>{m}</span>
+                <span class="mx-6 md:mx-9 text-white/25">✦</span>
+              </span>
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+
+    <!-- Right padding keeps the Privacy link clear of the floating WhatsApp button (56px + 16px margin). -->
+    <div class="container-x py-6 pr-[88px] md:pr-[88px] flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between text-[14px] text-white/65">
+      <p>© {new Date().getFullYear()} Chandigarh Civil Services. All rights reserved.</p>
+      <a
+        class="hover:text-white underline-offset-4 hover:underline"
+        href={withBase('/privacy-policy')}
+      >
+        Privacy Policy
+      </a>
+    </div>
+  </div>
+</footer>

@@ -1,0 +1,800 @@
+/**
+ * Chandigarh Civil Services (CCS): backend on Google Apps Script
+ * ---------------------------------------------------------------
+ * Bound to the Google Sheet "CCS Enquiries" (or, with the SHEET_ID property, opens that sheet by id).
+ * Deploy as a Web app (Execute as: Me, Who has access: Anyone). See SETUP.md.
+ *
+ * Every request is a form-encoded POST with an `action` field; every response is JSON.
+ * This file implements exactly the same API as dev-server/server.mjs (the local stand-in),
+ * so the website and /admin behave identically in development and production.
+ *
+ * Public actions : submitEnquiry, login
+ * Admin actions  : listEnquiries, updateEnquiry, listContent, getContent, saveContent,
+ *                  deleteContent, uploadFile, changePassword, listAdmins, addAdmin,
+ *                  setAdminActive, resetAdminPassword      (all need a valid session token)
+ *
+ * Secrets live ONLY in Project Settings > Script Properties (never in this file, never in the repo):
+ *   GITHUB_TOKEN          fine-grained token for this repo, Contents: read/write
+ *   GITHUB_REPO           "owner/ccs-website"
+ *   SIGNING_SECRET        long random string used to sign admin session tokens
+ *   FIRST_ADMIN_LOGIN     } used once by setup() to create the first admin; setup() then deletes
+ *   FIRST_ADMIN_PASSWORD  } the password property. There is no default login in the code.
+ *   SHEET_ID              optional: id of the enquiries sheet, when this script is NOT bound to it
+ *                         (a script owned by the developer, so the institute's account never holds the secrets)
+ */
+
+/* ============================== CONFIG (edit here) ============================== */
+var CONFIG = {
+  // Optional: get an email for every new enquiry. Leave '' to disable.
+  ALERT_EMAIL: '',
+  GITHUB_BRANCH: 'main',
+  TIMEZONE: 'Asia/Kolkata',
+  TOKEN_TTL_MS: 12 * 60 * 60 * 1000
+};
+
+var ENQUIRY_SHEET = 'Enquiries';
+var ADMIN_SHEET = 'Admins';
+var SUMMARY_SHEET = 'Summary';
+var STATUSES = ['Open', 'Contacted', 'Resolved', 'Enrolled'];
+var EXAMS = ['UPSC CSE', 'Punjab PSC (PCS)', 'Punjab One Day Exams', 'Other'];
+var CONTENT_FOLDERS = ['settings', 'home', 'courses', 'teachers', 'results', 'reels', 'resources', 'exam-updates', 'landing-pages', 'tests'];
+var UPLOAD_FOLDERS = ['courses', 'teachers', 'results', 'reels', 'resources', 'home', 'founder', 'landing-pages', 'misc'];
+var PATH_RE = new RegExp('^(' + CONTENT_FOLDERS.join('|') + ')/[a-z0-9][a-z0-9_-]{0,80}\\.json$');
+var MAX_JSON_CHARS = 60 * 1024;
+var MAX_IMAGE_BYTES = 1.5 * 1024 * 1024;
+var MAX_PDF_BYTES = 5 * 1024 * 1024;
+
+// Sheet "Enquiries" columns (ID is a stable key: row numbers shift because new rows go on top).
+var COLS = ['Received (IST)', 'Name', 'Mobile', 'Email', 'Exam', 'Year of attempt', 'City', 'Message',
+            'Source', 'UTM source', 'UTM medium', 'UTM campaign', 'Status', 'Notes', 'Last updated', 'Updated by', 'ID'];
+var C = {}; // column name -> 1-based index
+COLS.forEach(function (name, i) { C[name] = i + 1; });
+var ADMIN_COLS = ['email', 'name', 'salt', 'password_hash', 'active', 'must_change'];
+
+/* ================================ HTTP entry points ================================ */
+function doGet() {
+  return out_({ ok: true, service: 'ccs-backend' });
+}
+
+function doPost(e) {
+  try {
+    var p = (e && e.parameter) || {};
+    return out_(route_(p));
+  } catch (err) {
+    console.error(err && err.stack || err);
+    return out_({ ok: false, error: 'Server error. Please try again.' });
+  }
+}
+
+function out_(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}
+
+function route_(p) {
+  var action = String(p.action || '');
+  if (action === 'submitEnquiry') return submitEnquiry_(p);
+  if (action === 'login') return login_(p);
+
+  var me = authenticate_(p.token);
+  if (!me) return { ok: false, code: 'auth', error: 'Session expired. Please log in again.' };
+  // A temporary or default password may only be used to choose a new one.
+  if (me.must_change && action !== 'changePassword') return { ok: false, code: 'must_change', error: 'Please set a new password to continue.' };
+
+  switch (action) {
+    case 'listEnquiries': return listEnquiries_();
+    case 'updateEnquiry': return updateEnquiry_(p, me);
+    case 'listContent': return listContent_(p);
+    case 'getContent': return getContent_(p);
+    case 'saveContent': return saveContent_(p, me);
+    case 'deleteContent': return deleteContent_(p, me);
+    case 'uploadFile': return uploadFile_(p, me);
+    case 'changePassword': return changePassword_(p, me);
+    case 'listAdmins': return listAdmins_();
+    case 'addAdmin': return addAdmin_(p);
+    case 'setAdminActive': return setAdminActive_(p);
+    case 'resetAdminPassword': return resetAdminPassword_(p);
+    default: return { ok: false, error: 'Unknown action.' };
+  }
+}
+
+/* ============================== small utilities ============================== */
+function props_() { return PropertiesService.getScriptProperties(); }
+function ss_() {
+  var id = props_().getProperty('SHEET_ID');
+  return id ? SpreadsheetApp.openById(id) : SpreadsheetApp.getActiveSpreadsheet();
+}
+/** Trim, drop control characters (newlines would break CSV rows and email headers) and cap the length. */
+function clip_(v, n) { return String(v == null ? '' : v).replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/^\s+|\s+$/g, '').slice(0, n); }
+/** Cells starting with = + - @ would be evaluated as formulas: neutralise them. */
+function noFormula_(v) { return /^[=+\-@\t\r]/.test(v) ? "'" + v : v; }
+
+function toHex_(bytes) {
+  return bytes.map(function (b) { return ('0' + (b & 0xff).toString(16)).slice(-2); }).join('');
+}
+function sha256Hex_(s) {
+  return toHex_(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, s, Utilities.Charset.UTF_8));
+}
+function hmacHex_(value) {
+  var secret = props_().getProperty('SIGNING_SECRET');
+  if (!secret || secret.length < 16) throw new Error('SIGNING_SECRET script property is missing or too short.');
+  return toHex_(Utilities.computeHmacSha256Signature(value, secret));
+}
+/** Constant-time string comparison. */
+function safeEqual_(a, b) {
+  a = String(a); b = String(b);
+  var diff = a.length ^ b.length;
+  for (var i = 0; i < Math.max(a.length, b.length); i++) diff |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
+  return diff === 0;
+}
+function randomHex_(bytes) {
+  // Utilities.getUuid() is backed by a secure random source (Math.random is not).
+  var s = '';
+  while (s.length < bytes * 2) s += Utilities.getUuid().replace(/-/g, '');
+  return s.slice(0, bytes * 2);
+}
+function isoIst_(d) {
+  return d instanceof Date ? Utilities.formatDate(d, CONFIG.TIMEZONE, "yyyy-MM-dd'T'HH:mm:ssXXX") : String(d || '');
+}
+function withLock_(fn) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try { return fn(); } finally { lock.releaseLock(); }
+}
+function passwordProblem_(pw) {
+  if (typeof pw !== 'string' || pw.length < 8) return 'Password must be at least 8 characters.';
+  if (pw.length > 100) return 'Password is too long.';
+  if (!/[A-Za-z]/.test(pw) || !/\d/.test(pw)) return 'Password needs at least one letter and one number.';
+  return '';
+}
+
+/* ================================== enquiries ================================== */
+function submitEnquiry_(p) {
+  if (p.website) return { ok: true }; // honeypot hit: pretend success, store nothing
+
+  var name = clip_(p.name, 60);
+  var mobile = String(p.mobile || '').replace(/\D/g, '');
+  var email = clip_(p.email, 120);
+  var exam = clip_(p.exam, 40);
+  var source = clip_(p.source, 80) || '/';
+  // Only name, mobile number and exam are mandatory. Year, email, city and message are optional.
+  var year = clip_(p.year, 8);
+
+  if (name.length < 2) return { ok: false, code: 'invalid', error: 'Please enter your name.' };
+  if (!/^[6-9]\d{9}$/.test(mobile)) return { ok: false, code: 'invalid', error: 'Please enter a valid 10-digit mobile number.' };
+  if (EXAMS.indexOf(exam) < 0) return { ok: false, code: 'invalid', error: 'Please select the exam you are preparing for.' };
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return { ok: false, code: 'invalid', error: 'Please enter a valid email address.' };
+  if (year && !/^\d{4}$/.test(year)) return { ok: false, code: 'invalid', error: 'Please choose a valid year of attempt.' };
+
+  return withLock_(function () {
+    var cache = CacheService.getScriptCache();
+    // Global flood guard: at most 30 submissions per minute across the whole site.
+    var minuteKey = 'flood:' + Math.floor(Date.now() / 60000);
+    var count = Number(cache.get(minuteKey) || 0);
+    if (count >= 30) return { ok: false, code: 'busy', error: 'Too many requests. Please try again in a minute.' };
+    // Same mobile within 10 minutes = double-tap, not a new lead.
+    if (cache.get('m:' + mobile)) return { ok: false, code: 'duplicate', error: 'Already received.' };
+    cache.put(minuteKey, String(count + 1), 90);
+    cache.put('m:' + mobile, '1', 600);
+
+    var sheet = ss_().getSheetByName(ENQUIRY_SHEET);
+    if (!sheet) return { ok: false, error: 'Backend is not set up yet (run setup()).' };
+    var id = Date.now().toString(36) + randomHex_(3);
+    var row = [
+      new Date(), noFormula_(name), mobile, noFormula_(email), exam, year,
+      noFormula_(clip_(p.city, 60)), noFormula_(clip_(p.message, 300)), noFormula_(source),
+      noFormula_(clip_(p.utm_source, 80)), noFormula_(clip_(p.utm_medium, 80)), noFormula_(clip_(p.utm_campaign, 120)),
+      'Open', '', '', '', id
+    ];
+    sheet.insertRowBefore(2); // newest enquiry on top
+    var range = sheet.getRange(2, 1, 1, COLS.length);
+    range.setValues([row]);
+    range.setFontWeight('normal').setBackground(null);
+    sheet.getRange(2, C['Received (IST)']).setNumberFormat('dd mmm yyyy hh:mm');
+    sheet.getRange(2, C['Status']).setDataValidation(statusRule_());
+    SpreadsheetApp.flush();
+
+    if (CONFIG.ALERT_EMAIL) {
+      try {
+        MailApp.sendEmail(CONFIG.ALERT_EMAIL, 'New CCS enquiry: ' + name + ' (' + exam + ')',
+          'Name: ' + name + '\nMobile: ' + mobile + '\nExam: ' + exam +
+          (year ? '\nYear: ' + year : '') + (email ? '\nEmail: ' + email : '') +
+          (clip_(p.city, 60) ? '\nCity: ' + clip_(p.city, 60) : '') + '\nSource: ' + source +
+          (clip_(p.message, 300) ? '\nMessage: ' + clip_(p.message, 300) : ''));
+      } catch (mailErr) { console.warn('Alert email failed: ' + mailErr); }
+    }
+    return { ok: true };
+  });
+}
+
+function listEnquiries_() {
+  var sheet = ss_().getSheetByName(ENQUIRY_SHEET);
+  var last = sheet.getLastRow();
+  if (last < 2) return { ok: true, rows: [] };
+  var values = sheet.getRange(2, 1, last - 1, COLS.length).getValues();
+  var rows = values.filter(function (r) { return r[C['ID'] - 1]; }).map(function (r) {
+    return {
+      row_id: String(r[C['ID'] - 1]),
+      received: isoIst_(r[0]), name: r[1], mobile: String(r[2]), email: r[3], exam: r[4],
+      year: String(r[5]), city: r[6], message: r[7], source: r[8], utm_source: r[9], utm_medium: r[10],
+      utm_campaign: r[11], status: r[12], notes: r[13], last_updated: isoIst_(r[14]), updated_by: r[15]
+    };
+  });
+  return { ok: true, rows: rows };
+}
+
+function updateEnquiry_(p, me) {
+  return withLock_(function () {
+    var sheet = ss_().getSheetByName(ENQUIRY_SHEET);
+    var last = sheet.getLastRow();
+    if (last < 2) return { ok: false, error: 'Enquiry not found.' };
+    var cell = sheet.getRange(2, C['ID'], last - 1, 1).createTextFinder(String(p.row_id || '')).matchEntireCell(true).findNext();
+    if (!cell) return { ok: false, error: 'Enquiry not found.' };
+    var r = cell.getRow();
+    if (p.status !== undefined) {
+      if (STATUSES.indexOf(p.status) < 0) return { ok: false, error: 'Invalid status.' };
+      sheet.getRange(r, C['Status']).setValue(p.status);
+    }
+    if (p.notes !== undefined) sheet.getRange(r, C['Notes']).setValue(noFormula_(clip_(p.notes, 1000)));
+    var now = new Date();
+    sheet.getRange(r, C['Last updated']).setValue(now).setNumberFormat('dd mmm yyyy hh:mm');
+    sheet.getRange(r, C['Updated by']).setValue(me.name);
+    return { ok: true, last_updated: isoIst_(now), updated_by: me.name };
+  });
+}
+
+/* ================================ admins & auth ================================ */
+function adminSheet_() { return ss_().getSheetByName(ADMIN_SHEET); }
+
+function readAdmins_() {
+  var sh = adminSheet_();
+  var last = sh.getLastRow();
+  if (last < 2) return [];
+  return sh.getRange(2, 1, last - 1, ADMIN_COLS.length).getValues().map(function (r, i) {
+    return { row: i + 2, email: String(r[0]).toLowerCase(), name: String(r[1]), salt: String(r[2]),
+             password_hash: String(r[3]), active: r[4] === true || String(r[4]).toLowerCase() === 'true',
+             must_change: r[5] === true || String(r[5]).toLowerCase() === 'true' };
+  });
+}
+
+function login_(p) {
+  var email = clip_(p.email, 120).toLowerCase();
+  var password = String(p.password || '');
+  if (!email || !password) return { ok: false, error: 'Enter your login and password.' };
+  var cache = CacheService.getScriptCache();
+  var failKey = 'fail:' + sha256Hex_(email);
+  var fails = Number(cache.get(failKey) || 0);
+  if (fails >= 5) return { ok: false, code: 'locked', error: 'Too many failed attempts. Try again in 15 minutes.' };
+  var admin = readAdmins_().filter(function (a) { return a.email === email && a.active; })[0];
+  var ok = admin && safeEqual_(sha256Hex_(admin.salt + password), admin.password_hash);
+  if (!ok) {
+    cache.put(failKey, String(fails + 1), 900);
+    return { ok: false, error: 'Incorrect login or password.' };
+  }
+  cache.remove(failKey);
+  var payload = Utilities.base64EncodeWebSafe(admin.email + '|' + (Date.now() + CONFIG.TOKEN_TTL_MS)).replace(/=+$/, '');
+  return { ok: true, token: payload + '.' + hmacHex_(payload), name: admin.name, email: admin.email,
+           expires_in: CONFIG.TOKEN_TTL_MS / 1000, must_change: admin.must_change };
+}
+
+function authenticate_(token) {
+  var parts = String(token || '').split('.');
+  if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
+  if (!safeEqual_(parts[1], hmacHex_(parts[0]))) return null;
+  var decoded;
+  try {
+    decoded = Utilities.newBlob(Utilities.base64DecodeWebSafe(parts[0])).getDataAsString().split('|');
+  } catch (e) { return null; }
+  if (decoded.length !== 2 || !(Number(decoded[1]) > Date.now())) return null;
+  // A deactivated admin loses access immediately, even with an unexpired token.
+  return readAdmins_().filter(function (a) { return a.email === decoded[0] && a.active; })[0] || null;
+}
+
+function changePassword_(p, me) {
+  var problem = passwordProblem_(p.new_password);
+  if (!safeEqual_(sha256Hex_(me.salt + String(p.old_password || '')), me.password_hash)) return { ok: false, error: 'Current password is incorrect.' };
+  if (problem) return { ok: false, error: problem };
+  if (p.new_password === p.old_password) return { ok: false, error: 'Choose a password different from the current one.' };
+  return withLock_(function () { setPassword_(me.row, p.new_password, false); return { ok: true }; });
+}
+function setPassword_(row, password, mustChange) {
+  var salt = randomHex_(16);
+  adminSheet_().getRange(row, 3, 1, 2).setValues([[salt, sha256Hex_(salt + password)]]);
+  adminSheet_().getRange(row, 6).setValue(Boolean(mustChange));
+}
+
+function listAdmins_() {
+  return { ok: true, admins: readAdmins_().map(function (a) { return { email: a.email, name: a.name, active: a.active }; }) };
+}
+function addAdmin_(p) {
+  var email = clip_(p.email, 120).toLowerCase();
+  var name = clip_(p.name, 60);
+  if (!/^[a-z0-9._@+-]{3,120}$/.test(email)) return { ok: false, error: 'Login must be 3-120 characters (letters, numbers, . _ - @).' };
+  if (name.length < 2) return { ok: false, error: 'Enter the admin’s name.' };
+  var problem = passwordProblem_(p.password);
+  if (problem) return { ok: false, error: problem };
+  return withLock_(function () {
+    if (readAdmins_().some(function (a) { return a.email === email; })) return { ok: false, error: 'An admin with this login already exists.' };
+    var salt = randomHex_(16);
+    adminSheet_().appendRow([email, noFormula_(name), salt, sha256Hex_(salt + p.password), true, true]);
+    return { ok: true };
+  });
+}
+function setAdminActive_(p) {
+  return withLock_(function () {
+    var admins = readAdmins_();
+    var a = admins.filter(function (x) { return x.email === String(p.email || '').toLowerCase(); })[0];
+    if (!a) return { ok: false, error: 'Admin not found.' };
+    var active = p.active === 'true' || p.active === true;
+    if (!active && admins.filter(function (x) { return x.active && x.email !== a.email; }).length === 0) return { ok: false, error: 'You cannot deactivate the last active admin.' };
+    adminSheet_().getRange(a.row, 5).setValue(active);
+    return { ok: true };
+  });
+}
+function resetAdminPassword_(p) {
+  var problem = passwordProblem_(p.password);
+  if (problem) return { ok: false, error: problem };
+  return withLock_(function () {
+    var a = readAdmins_().filter(function (x) { return x.email === String(p.email || '').toLowerCase(); })[0];
+    if (!a) return { ok: false, error: 'Admin not found.' };
+    setPassword_(a.row, p.password, true); // whoever received the temporary password must replace it
+    return { ok: true };
+  });
+}
+
+/* ============================ content via GitHub API ============================ */
+function ghFetchParams_(method, payload) {
+  var token = props_().getProperty('GITHUB_TOKEN');
+  var params = {
+    method: method,
+    headers: { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'ccs-admin' },
+    muteHttpExceptions: true
+  };
+  if (payload) { params.contentType = 'application/json'; params.payload = JSON.stringify(payload); }
+  return params;
+}
+function ghUrl_(path, ref) {
+  var repo = props_().getProperty('GITHUB_REPO');
+  if (!repo || !props_().getProperty('GITHUB_TOKEN')) throw new Error('GITHUB_REPO / GITHUB_TOKEN script properties are missing.');
+  return 'https://api.github.com/repos/' + repo + '/contents/' + path + (ref ? '?ref=' + CONFIG.GITHUB_BRANCH : '');
+}
+function decodeB64_(b64) {
+  return Utilities.newBlob(Utilities.base64Decode(String(b64).replace(/\s/g, ''))).getDataAsString('UTF-8');
+}
+function parseItem_(path, res) {
+  if (res.getResponseCode() !== 200) return null;
+  var body = JSON.parse(res.getContentText());
+  return { path: path, sha: body.sha, data: JSON.parse(decodeB64_(body.content)) };
+}
+function contentPathOk_(path) { return PATH_RE.test(String(path || '')) && String(path).indexOf('..') < 0; }
+
+function getContent_(p) {
+  var path = String(p.path || '');
+  if (!contentPathOk_(path)) return { ok: false, error: 'That path is not allowed.' };
+  var res = UrlFetchApp.fetch(ghUrl_('src/content/' + path, true), ghFetchParams_('get'));
+  var item = parseItem_(path, res);
+  return item ? { ok: true, path: item.path, sha: item.sha, data: item.data } : { ok: false, error: 'File not found.' };
+}
+
+function listContent_(p) {
+  var folder = String(p.folder || '');
+  if (CONTENT_FOLDERS.indexOf(folder) < 0) return { ok: false, error: 'Unknown folder.' };
+  var res = UrlFetchApp.fetch(ghUrl_('src/content/' + folder, true), ghFetchParams_('get'));
+  if (res.getResponseCode() === 404) return { ok: true, items: [] };
+  if (res.getResponseCode() !== 200) return { ok: false, error: 'GitHub error ' + res.getResponseCode() + '.' };
+  var files = JSON.parse(res.getContentText()).filter(function (f) { return f.type === 'file' && /\.json$/.test(f.name); });
+  // Fetch every file in parallel so a folder of 100 results still loads in a couple of seconds.
+  var requests = files.map(function (f) {
+    var r = ghFetchParams_('get');
+    r.url = ghUrl_('src/content/' + folder + '/' + f.name, true);
+    return r;
+  });
+  var responses = requests.length ? UrlFetchApp.fetchAll(requests) : [];
+  var items = [];
+  responses.forEach(function (r, i) {
+    var item = parseItem_(folder + '/' + files[i].name, r);
+    if (item) items.push(item);
+  });
+  return { ok: true, items: items };
+}
+
+/* ===== BEGIN GENERATED: content lock (npm run rules). Do not edit by hand. ===== */
+// What the admin panel may write. Source: src/admin/schemas.ts + google-apps-script/content-lock.mjs.
+var CONTENT_RULES = {
+  "settings": {"files":["site"],"fields":{"phone":{"label":"Phone number (shown on the site)","type":"text","required":true,"max":20},"whatsapp_number":{"label":"WhatsApp number (digits with country code)","type":"text","required":true,"max":15},"email":{"label":"Email","type":"text","required":true,"max":80},"address":{"label":"Address","type":"textarea","required":true,"max":200},"map_url":{"label":"Google Maps link","type":"url"},"youtube_url":{"label":"YouTube channel link","type":"url"},"instagram_url":{"label":"Instagram link","type":"url"},"telegram_url":{"label":"Telegram link","type":"url"},"attempt_years":{"label":"Year-of-attempt choices in the enquiry form","type":"strings","max":4,"maxItems":8,"pattern":"^\\d{4}$","patternHelp":"Each year must be four digits, for example 2027."}},"system":[],"developerOnly":{"show_free_tests":false}},
+  "home": {"files":["home"],"fields":{"hero_video_url":{"label":"Video link","type":"video"},"hero_poster":{"label":"Poster image (shown before the video loads, and on phones)","type":"image"},"hero_kicker":{"label":"Welcome line (small text above the headline)","type":"text","max":60},"hero_headline":{"label":"Headline","type":"text","required":true,"max":70},"hero_subtext":{"label":"Sub-text","type":"textarea","max":200},"hero_btn1_label":{"label":"Button 1 label (opens the enquiry form)","type":"text","required":true,"max":30},"hero_btn2_label":{"label":"Button 2 label","type":"text","required":true,"max":30},"hero_btn2_link":{"label":"Button 2 link","type":"url","required":true},"hero_search_placeholder":{"label":"Search bar hint text","type":"text","max":60},"hero_search_popular":{"label":"Popular searches (up to 6)","type":"strings","max":24,"maxItems":6},"stats":{"label":"Four stat tiles (shown under the search bar)","type":"objects","maxItems":4,"sub":[{"key":"value","label":"Value","type":"text","max":10},{"key":"label","label":"Label","type":"text","max":40}]},"founder_photo":{"label":"Founder photo","type":"image"},"founder_name":{"label":"Name","type":"text","required":true,"max":50},"founder_designation":{"label":"Designation","type":"text","max":50},"founder_kicker":{"label":"Small label","type":"text","max":40},"founder_headline":{"label":"Headline","type":"text","required":true,"max":60},"founder_message":{"label":"Message","type":"textarea","max":600},"featured_course_ids":{"label":"Three courses shown on the Home page","type":"coursePick","maxItems":3},"cta_headline":{"label":"Headline","type":"text","required":true,"max":70},"cta_subtext":{"label":"Sub-text","type":"textarea","max":160},"cta_points":{"label":"Three bullet points","type":"strings","max":90,"maxItems":3}},"system":[]},
+  "landing-pages": {"fields":{"slug":{"label":"Page address","type":"text","required":true,"max":60,"addOnly":true,"pattern":"^[a-z0-9]+(?:-[a-z0-9]+)*$","patternHelp":"Page address may only use lowercase letters, numbers and single hyphens."},"internal_name":{"label":"Internal name","type":"text","required":true,"max":80},"published":{"label":"Published (unchecked = removed from the live site and sitemap)","type":"checkbox"},"show_on_main_site":{"label":"Show link in the footer “Programs” column","type":"checkbox"},"seo_title":{"label":"Browser / Google title","type":"text","max":70},"seo_description":{"label":"Google description","type":"textarea","max":160},"hero_kicker":{"label":"Small label above the headline","type":"text","max":50},"hero_headline":{"label":"Headline","type":"text","required":true,"max":70},"hero_subtext":{"label":"Sub-text","type":"textarea","max":220},"hero_bullets":{"label":"Tick points (up to 3)","type":"strings","max":80,"maxItems":3},"countdown_date":{"label":"Countdown to (optional)","type":"datetime"},"default_exam":{"label":"Exam pre-selected in the form","type":"select","required":true,"options":["UPSC CSE","Punjab PSC (PCS)","Punjab One Day Exams","Other"]},"benefits":{"label":"Benefits (3 blocks)","type":"objects","maxItems":3,"sub":[{"key":"title","label":"Title","type":"text","max":40},{"key":"text","label":"One line","type":"text","max":100}]},"show_toppers":{"label":"Show the toppers strip","type":"checkbox"},"faqs":{"label":"FAQs (up to 8)","type":"objects","maxItems":8,"sub":[{"key":"q","label":"Question","type":"text","max":120},{"key":"a","label":"Answer","type":"textarea","max":400}]},"cta_headline":{"label":"Closing headline","type":"text","max":80},"cta_button_label":{"label":"Button label","type":"text","max":30}},"system":["dummy"]},
+  "courses": {"fields":{"thumbnail":{"label":"Thumbnail","type":"image"},"name":{"label":"Course name","type":"text","required":true,"max":70},"price":{"label":"Price","type":"text","required":true,"max":20},"category":{"label":"Category","type":"select","required":true,"options":["UPSC CSE","Punjab PSC","Punjab One Day","Optional","Test series"],"addOnly":true}},"system":["order","published","dummy"]},
+  "teachers": {"fields":{"photo":{"label":"Photo","type":"image"},"name":{"label":"Name","type":"text","required":true,"max":60},"subject":{"label":"Subject","type":"text","required":true,"max":60},"credential":{"label":"Credential","type":"text","max":70},"bio":{"label":"Short bio","type":"textarea","max":240},"intro_video_url":{"label":"Intro video link (optional)","type":"url"}},"system":["order","published","dummy"]},
+  "results": {"fields":{"photo":{"label":"Photo","type":"image"},"student_name":{"label":"Student name","type":"text","required":true,"max":60},"exam":{"label":"Exam","type":"text","required":true,"max":40},"exam_year":{"label":"Year","type":"text","required":true,"max":4},"rank_label":{"label":"Rank label","type":"text","required":true,"max":20},"quote":{"label":"Quote (optional)","type":"textarea","max":200},"show_on_home":{"label":"Show on the Home page (and landing-page topper strips)","type":"checkbox"}},"system":["order","published","dummy"]},
+  "reels": {"fields":{"instagram_url":{"label":"Instagram reel link","type":"url","required":true,"pattern":"^https?:\\/\\/(www\\.)?instagram\\.com\\/([A-Za-z0-9_.]+\\/)?(reels?|p|tv)\\/[A-Za-z0-9_-]{5,20}([/?#]|$)","patternFlags":"i","patternHelp":"Paste an Instagram reel link, for example https://www.instagram.com/reel/AbCdEfGh123/"},"student_name":{"label":"Student name","type":"text","required":true,"max":40},"label":{"label":"Rank and exam","type":"text","max":50},"cover":{"label":"Cover picture","type":"image"}},"system":["order","published","dummy"]},
+  "resources": {"fields":{"title":{"label":"Title","type":"text","required":true,"max":70},"subtitle":{"label":"Subtitle","type":"text","max":90},"category":{"label":"Category","type":"select","required":true,"options":["Notes & PDFs","PYQs","Current Affairs","Videos","Punjab GK"]},"type":{"label":"Type","type":"select","required":true,"options":["pdf","video","link"]},"file":{"label":"Upload a PDF","type":"file"},"url":{"label":"Link","type":"url"},"show_on_home":{"label":"Show in the Home page carousel","type":"checkbox"}},"system":["order","published","dummy"]},
+  "exam-updates": {"fields":{"date":{"label":"Date","type":"date","required":true},"exam_body":{"label":"Exam body","type":"select","required":true,"options":["UPSC","PPSC","PSSSB","Punjab Police","Other"]},"category":{"label":"Category","type":"select","required":true,"options":["Notification","Exam date","Admit card","Answer key","Result","Syllabus"]},"title":{"label":"Title","type":"text","required":true,"max":120},"link":{"label":"Official link","type":"url"}},"system":["published","dummy"]},
+  "tests": {"fields":{"title":{"label":"Title","type":"text","required":true,"max":80},"exam":{"label":"Exam","type":"select","required":true,"options":["UPSC CSE","Punjab PSC (PCS)","Punjab One Day Exams","Other"]},"question_count":{"label":"Questions","type":"number","required":true},"duration_min":{"label":"Duration (minutes)","type":"number","required":true},"test_url":{"label":"Test link","type":"url","required":true}},"system":["published","dummy"]}
+};
+
+function cleanContent_(rules, path, data, current) {
+  var parts = String(path).split('/');
+  var rule = rules[parts[0]];
+  var stem = String(parts[1] || '').replace(/\.json$/, '');
+  if (!rule) return { ok: false, error: 'That path is not allowed.' };
+  if (rule.files && rule.files.indexOf(stem) < 0) {
+    return { ok: false, error: 'That page has a fixed file name and cannot be added to.' };
+  }
+
+  var CONTROL = /[\u0000-\u001f\u007f]/g;
+  var CONTROL_KEEP_LINES = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g;
+  var LINK = /^(https?:\/\/|\/(?!\/)|#|mailto:|tel:)/i;
+  var UPLOAD = /^\/uploads\/[A-Za-z0-9][A-Za-z0-9\/_.-]{0,180}$/;
+  var DATE = /^\d{4}-\d{2}-\d{2}$/;
+  var DATETIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/;
+  var ID = /^[a-z0-9][a-z0-9_-]{0,80}$/;
+
+  var isObject = function (v) {
+    return v !== null && typeof v === 'object' && !Array.isArray(v);
+  };
+  var fail = function (field, text) {
+    return { error: field.label + ' ' + text };
+  };
+
+  /** Cleans one value. Returns { value } or { error }. */
+  function cleanValue(field, v) {
+    var type = field.type;
+    var empty = v === '' || v === null || v === undefined;
+
+    if (type === 'checkbox') {
+      if (typeof v !== 'boolean') return fail(field, 'must be on or off.');
+      return { value: v };
+    }
+
+    if (type === 'number') {
+      if (empty) return field.required ? fail(field, 'is required.') : { value: '' };
+      if (typeof v !== 'number' || !isFinite(v) || Math.abs(v) > 1e9)
+        return fail(field, 'must be a number.');
+      return { value: v };
+    }
+
+    if (type === 'strings') {
+      if (!Array.isArray(v)) return fail(field, 'must be a list.');
+      if (v.length > (field.maxItems || 20)) return fail(field, 'has too many items.');
+      var list = [];
+      for (var i = 0; i < v.length; i++) {
+        var one = cleanText(
+          {
+            label: field.label,
+            type: 'text',
+            max: field.max,
+            pattern: field.pattern,
+            patternFlags: field.patternFlags,
+            patternHelp: field.patternHelp,
+          },
+          v[i],
+        );
+        if (one.error) return one;
+        list.push(one.value);
+      }
+      return { value: list };
+    }
+
+    if (type === 'objects') {
+      if (!Array.isArray(v)) return fail(field, 'must be a list.');
+      if (v.length > (field.maxItems || 20)) return fail(field, 'has too many items.');
+      var rows = [];
+      for (var r = 0; r < v.length; r++) {
+        if (!isObject(v[r])) return fail(field, 'has an invalid item.');
+        var row = {};
+        for (var s = 0; s < field.sub.length; s++) {
+          var sub = field.sub[s];
+          var cell = cleanText(sub, v[r][sub.key] === undefined ? '' : v[r][sub.key]);
+          if (cell.error) return cell;
+          row[sub.key] = cell.value;
+        }
+        rows.push(row);
+      }
+      return { value: rows };
+    }
+
+    if (type === 'coursePick') {
+      if (!Array.isArray(v)) return fail(field, 'must be a list.');
+      if (v.length > (field.maxItems || 3)) return fail(field, 'has too many items.');
+      for (var c = 0; c < v.length; c++) {
+        if (typeof v[c] !== 'string' || !ID.test(v[c]))
+          return fail(field, 'has an invalid course.');
+      }
+      return { value: v.slice() };
+    }
+
+    return cleanText(field, v);
+  }
+
+  /** Text-like fields: text, textarea, select, url, video, image, file, date, datetime. */
+  function cleanText(field, v) {
+    if (typeof v !== 'string') return fail(field, 'must be text.');
+    var type = field.type;
+    var text = type === 'textarea' ? v.replace(CONTROL_KEEP_LINES, '') : v.replace(CONTROL, ' ');
+    var max = field.max || (type === 'textarea' ? 1000 : 200);
+    if (type === 'url' || type === 'video' || type === 'image' || type === 'file') max = 500;
+    if (text.length > max) return fail(field, 'is too long (at most ' + max + ' characters).');
+    if (field.required && text.replace(/^\s+|\s+$/g, '') === '') return fail(field, 'is required.');
+    if (text === '') return { value: '' };
+
+    if (type === 'select' && field.options.indexOf(text) < 0)
+      return fail(field, 'has an option that is not allowed.');
+    if ((type === 'url' || type === 'video') && !LINK.test(text.replace(/^\s+/, ''))) {
+      return fail(field, 'must start with https:// (or / for a page on this site).');
+    }
+    if ((type === 'image' || type === 'file') && (!UPLOAD.test(text) || text.indexOf('..') >= 0)) {
+      return fail(field, 'must be an uploaded file.');
+    }
+    if (type === 'file' && !/\.pdf$/i.test(text)) return fail(field, 'must be a PDF.');
+    if (type === 'date' && !DATE.test(text)) return fail(field, 'is not a valid date.');
+    if (type === 'datetime' && !DATETIME.test(text))
+      return fail(field, 'is not a valid date and time.');
+    if (field.pattern && !new RegExp(field.pattern, field.patternFlags || '').test(text)) {
+      return { error: field.patternHelp || field.label + ' is not in the expected format.' };
+    }
+    return { value: text };
+  }
+
+  var out = {};
+
+  // Declared content fields.
+  var names = Object.keys(rule.fields);
+  for (var n = 0; n < names.length; n++) {
+    var key = names[n];
+    var field = rule.fields[key];
+    var has =
+      Object.prototype.hasOwnProperty.call(data, key) &&
+      data[key] !== undefined &&
+      data[key] !== null;
+    if (!has) {
+      if (field.required) return { ok: false, error: field.label + ' is required.' };
+      continue;
+    }
+    var cleaned = cleanValue(field, data[key]);
+    if (cleaned.error) return { ok: false, error: cleaned.error };
+    out[key] = cleaned.value;
+  }
+
+  // Bookkeeping keys the admin panel keeps on every item (order, published, sample marker).
+  var system = rule.system || [];
+  for (var k = 0; k < system.length; k++) {
+    var sys = system[k];
+    if (!Object.prototype.hasOwnProperty.call(data, sys)) continue;
+    var value = data[sys];
+    if (sys === 'order') {
+      if (typeof value !== 'number' || !isFinite(value) || value < 0 || value > 100000) {
+        return { ok: false, error: 'Order must be a number.' };
+      }
+    } else if (typeof value !== 'boolean') {
+      return { ok: false, error: 'Invalid value for ' + sys + '.' };
+    }
+    out[sys] = value;
+  }
+
+  // Developer-only switches: never taken from the request.
+  var locked = rule.developerOnly || {};
+  var lockedKeys = Object.keys(locked);
+  for (var d = 0; d < lockedKeys.length; d++) {
+    var dk = lockedKeys[d];
+    out[dk] =
+      current && Object.prototype.hasOwnProperty.call(current, dk) ? current[dk] : locked[dk];
+  }
+
+  // Choices that can only be made when an item is created keep their stored value afterwards.
+  if (current) {
+    for (var n2 = 0; n2 < names.length; n2++) {
+      var fk = names[n2];
+      if (rule.fields[fk].addOnly && Object.prototype.hasOwnProperty.call(current, fk))
+        out[fk] = current[fk];
+    }
+  }
+
+  return { ok: true, data: out };
+}
+/* ===== END GENERATED ===== */
+
+function validateContent_(path, data) {
+  if (data === null || typeof data !== 'object' || Array.isArray(data)) return 'Content must be a JSON object.';
+  var bad = function (o) {
+    if (o && typeof o === 'object') {
+      for (var k in o) {
+        if (k === '__proto__' || k === 'constructor' || k === 'prototype' || bad(o[k])) return true;
+      }
+    }
+    return false;
+  };
+  if (bad(data)) return 'Invalid key in content.';
+  if (path.indexOf('landing-pages/') === 0 && data.slug !== path.slice('landing-pages/'.length, -5)) return 'Landing page slug must match its file name.';
+  return '';
+}
+
+/** True when the rule has developer-only switches or set-once fields, so the stored copy must be read first. */
+function needsStoredCopy_(rule) {
+  if (rule.developerOnly && Object.keys(rule.developerOnly).length) return true;
+  return Object.keys(rule.fields).some(function (k) { return rule.fields[k].addOnly; });
+}
+
+function saveContent_(p, me) {
+  var path = String(p.path || '');
+  if (!contentPathOk_(path)) return { ok: false, error: 'That path is not allowed.' };
+  var jsonText = String(p.json || '');
+  if (jsonText.length > MAX_JSON_CHARS) return { ok: false, error: 'Content is too large.' };
+  var data;
+  try { data = JSON.parse(jsonText); } catch (e) { return { ok: false, error: 'Content is not valid JSON.' }; }
+  var problem = validateContent_(path, data);
+  if (problem) return { ok: false, error: problem };
+
+  // THE LOCK: keep only the fields the admin screen shows, check every value, and take developer-only
+  // switches and "set once" fields from the stored copy, never from the request.
+  var rule = CONTENT_RULES[path.split('/')[0]];
+  var current = null;
+  if (p.sha && needsStoredCopy_(rule)) {
+    var read = UrlFetchApp.fetch(ghUrl_('src/content/' + path, true), ghFetchParams_('get'));
+    if (read.getResponseCode() === 200) current = parseItem_(path, read).data;
+    else if (read.getResponseCode() !== 404) return { ok: false, error: 'Could not read the current version from GitHub (error ' + read.getResponseCode() + '). Please try again.' };
+  }
+  var cleaned = cleanContent_(CONTENT_RULES, path, data, current);
+  if (!cleaned.ok) return { ok: false, error: cleaned.error };
+  data = cleaned.data;
+
+  var body = {
+    message: 'admin: ' + me.name + ' updated ' + path,
+    content: Utilities.base64Encode(JSON.stringify(data, null, 2) + '\n', Utilities.Charset.UTF_8),
+    branch: CONFIG.GITHUB_BRANCH
+  };
+  if (p.sha) body.sha = String(p.sha);
+  var res = UrlFetchApp.fetch(ghUrl_('src/content/' + path), ghFetchParams_('put', body));
+  var code = res.getResponseCode();
+  if (code === 200 || code === 201) return { ok: true, sha: JSON.parse(res.getContentText()).content.sha };
+  if (code === 409 || code === 422) {
+    // The file changed since this admin loaded it (or already exists): hand back the latest version.
+    var cur = parseItem_(path, UrlFetchApp.fetch(ghUrl_('src/content/' + path, true), ghFetchParams_('get')));
+    return { ok: false, code: 'conflict', error: 'Someone else changed this item.', current: cur };
+  }
+  console.error('GitHub save failed: ' + code + ' ' + res.getContentText());
+  return { ok: false, error: 'Could not save to GitHub (error ' + code + ').' };
+}
+
+function deleteContent_(p, me) {
+  var path = String(p.path || '');
+  if (!contentPathOk_(path)) return { ok: false, error: 'That path is not allowed.' };
+  // settings/site.json and home/home.json must always exist: without them the site cannot be built.
+  if (CONTENT_RULES[path.split('/')[0]].files) return { ok: false, error: 'This page cannot be deleted.' };
+  var res = UrlFetchApp.fetch(ghUrl_('src/content/' + path), ghFetchParams_('delete', {
+    message: 'admin: ' + me.name + ' deleted ' + path, sha: String(p.sha || ''), branch: CONFIG.GITHUB_BRANCH
+  }));
+  var code = res.getResponseCode();
+  if (code === 200) return { ok: true };
+  if (code === 409 || code === 422) return { ok: false, code: 'conflict', error: 'Someone else changed this item.' };
+  return { ok: false, error: 'Could not delete (error ' + code + ').' };
+}
+
+/** Accepts WebP images (compressed by the browser) and PDFs only. Detected from the file's own bytes. */
+function uploadFile_(p, me) {
+  var folder = String(p.folder || '');
+  if (UPLOAD_FOLDERS.indexOf(folder) < 0) return { ok: false, error: 'Upload folder not allowed.' };
+  var b64 = String(p.base64 || '').replace(/^data:[^,]*,/, '').replace(/\s/g, '');
+  var bytes;
+  try { bytes = Utilities.base64Decode(b64); } catch (e) { return { ok: false, error: 'Invalid file data.' }; }
+  var at = function (i) { return String.fromCharCode(bytes[i] & 0xff); };
+  var isWebp = bytes.length > 12 && at(0) + at(1) + at(2) + at(3) === 'RIFF' && at(8) + at(9) + at(10) + at(11) === 'WEBP';
+  var isPdf = bytes.length > 5 && at(0) + at(1) + at(2) + at(3) + at(4) === '%PDF-';
+  if (!isWebp && !isPdf) return { ok: false, error: 'Only WebP images and PDF files can be uploaded.' };
+  if (isWebp && bytes.length > MAX_IMAGE_BYTES) return { ok: false, error: 'Image is too large (max 1.5 MB).' };
+  if (isPdf && bytes.length > MAX_PDF_BYTES) return { ok: false, error: 'PDF is too large (max 5 MB).' };
+  if (isPdf && folder !== 'resources') return { ok: false, error: 'PDFs can only be uploaded to resources.' };
+
+  var slug = String(p.filename || 'file').toLowerCase().replace(/\.[a-z0-9]+$/i, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'file';
+  var name = slug + '-' + Date.now() + (isPdf ? '.pdf' : '.webp');
+  var path = 'public/uploads/' + folder + '/' + name;
+  var res = UrlFetchApp.fetch(ghUrl_(path), ghFetchParams_('put', {
+    message: 'admin: ' + me.name + ' uploaded ' + path, content: b64, branch: CONFIG.GITHUB_BRANCH
+  }));
+  if (res.getResponseCode() !== 201 && res.getResponseCode() !== 200) return { ok: false, error: 'Could not upload to GitHub (error ' + res.getResponseCode() + ').' };
+  return { ok: true, path: '/uploads/' + folder + '/' + name };
+}
+
+/* ====================================== setup ====================================== */
+/** Run ONCE by hand from the editor (select setup, press Run). Safe to re-run: it never deletes data. */
+function setup() {
+  var ss = ss_();
+  ss.setSpreadsheetTimeZone(CONFIG.TIMEZONE);
+
+  // ---- Enquiries
+  var sheet = ss.getSheetByName(ENQUIRY_SHEET) || ss.insertSheet(ENQUIRY_SHEET, 0);
+  sheet.getRange(1, 1, 1, COLS.length).setValues([COLS]).setFontWeight('bold').setBackground('#1A1B1F').setFontColor('#FFFFFF');
+  sheet.setFrozenRows(1);
+  if (!sheet.getFilter()) sheet.getRange(1, 1, Math.max(sheet.getMaxRows(), 2), COLS.length).createFilter();
+  sheet.getRange(2, C['Mobile'], sheet.getMaxRows() - 1, 1).setNumberFormat('@');
+  sheet.getRange(2, C['Status'], sheet.getMaxRows() - 1, 1).setDataValidation(statusRule_());
+  sheet.setColumnWidths(1, COLS.length, 130);
+  sheet.setColumnWidth(C['Message'], 260);
+  sheet.setColumnWidth(C['Notes'], 260);
+  // Colours: the rule range starts at row 1 so rows inserted at row 2 stay inside it.
+  var statusRange = sheet.getRange(1, C['Status'], sheet.getMaxRows(), 1);
+  var colours = { Open: ['#DCE8FF', '#0A3AB5'], Contacted: ['#FFF0C7', '#7A5200'], Resolved: ['#E6E8EC', '#3D4350'], Enrolled: ['#D7F4DB', '#0C6B1A'] };
+  sheet.setConditionalFormatRules(STATUSES.map(function (s) {
+    return SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo(s).setBackground(colours[s][0]).setFontColor(colours[s][1]).setRanges([statusRange]).build();
+  }));
+  sheet.getRange(1, C['ID']).setNote('Stable unique key. Do not edit or delete: the admin panel uses it to find the right row.');
+
+  // ---- Admins (hidden + protected: holds password hashes, never share this sheet as Editor)
+  var admins = ss.getSheetByName(ADMIN_SHEET) || ss.insertSheet(ADMIN_SHEET);
+  admins.getRange(1, 1, 1, ADMIN_COLS.length).setValues([ADMIN_COLS]).setFontWeight('bold');
+  admins.setFrozenRows(1);
+  if (admins.getLastRow() < 2) {
+    // The first admin comes from Script Properties so no login or password ever lives in the code or the repo.
+    var login = clip_(props_().getProperty('FIRST_ADMIN_LOGIN'), 120).toLowerCase();
+    var password = String(props_().getProperty('FIRST_ADMIN_PASSWORD') || '');
+    if (!/^[a-z0-9._@+-]{3,120}$/.test(login) || passwordProblem_(password)) {
+      throw new Error('Before running setup(), add the Script Properties FIRST_ADMIN_LOGIN (3+ characters) and ' +
+        'FIRST_ADMIN_PASSWORD (8+ characters with a letter and a number). See SETUP.md step 4.');
+    }
+    var salt = randomHex_(16);
+    admins.appendRow([login, noFormula_(clip_(props_().getProperty('FIRST_ADMIN_NAME') || 'Administrator', 60)), salt, sha256Hex_(salt + password), true, false]);
+    props_().deleteProperty('FIRST_ADMIN_PASSWORD'); // the plaintext does not stay anywhere
+  }
+  var protection = admins.protect().setDescription('Admin logins: owner only');
+  protection.removeEditors(protection.getEditors().filter(function (u) { return u.getEmail() !== Session.getEffectiveUser().getEmail(); }));
+  if (protection.canDomainEdit()) protection.setDomainEdit(false);
+  admins.hideSheet();
+
+  // ---- Summary (formulas; a backup view of what /admin shows)
+  var sum = ss.getSheetByName(SUMMARY_SHEET) || ss.insertSheet(SUMMARY_SHEET);
+  sum.clear();
+  var L = function (name) { return String.fromCharCode(64 + C[name]); };
+  var enq = function (name) { return ENQUIRY_SHEET + '!$' + L(name) + '$2:$' + L(name) + '$20000'; };
+  sum.getRange('A1').setValue('Enquiries by status').setFontWeight('bold');
+  STATUSES.forEach(function (s, i) {
+    sum.getRange(2 + i, 1).setValue(s);
+    sum.getRange(2 + i, 2).setFormula('=COUNTIF(' + enq('Status') + ',A' + (2 + i) + ')');
+  });
+  sum.getRange('A6').setValue('Total').setFontWeight('bold');
+  sum.getRange('B6').setFormula('=SUM(B2:B5)').setFontWeight('bold');
+
+  sum.getRange('A8').setValue('By exam x year of attempt').setFontWeight('bold');
+  var years = ['2027', '2028', '2029'];
+  var noYearCol = 2 + years.length;      // year is optional on the form, so blanks get their own column
+  var totalCol = 3 + years.length;
+  sum.getRange(9, 1).setValue('Exam').setFontWeight('bold');
+  years.forEach(function (y, j) { sum.getRange(9, 2 + j).setNumberFormat('@').setValue(y).setFontWeight('bold'); });
+  sum.getRange(9, noYearCol).setValue('No year').setFontWeight('bold');
+  sum.getRange(9, totalCol).setValue('Total').setFontWeight('bold');
+  EXAMS.forEach(function (ex, i) {
+    var r = 10 + i;
+    sum.getRange(r, 1).setValue(ex);
+    years.forEach(function (y, j) {
+      var colLetter = String.fromCharCode(66 + j);
+      sum.getRange(r, 2 + j).setFormula('=COUNTIFS(' + enq('Exam') + ',$A' + r + ',' + enq('Year of attempt') + ',' + colLetter + '$9)');
+    });
+    sum.getRange(r, noYearCol).setFormula('=COUNTIFS(' + enq('Exam') + ',$A' + r + ',' + enq('Year of attempt') + ',"")');
+    sum.getRange(r, totalCol).setFormula('=SUM(B' + r + ':' + String.fromCharCode(64 + noYearCol) + r + ')');
+  });
+  var totalRow = 10 + EXAMS.length;
+  sum.getRange(totalRow, 1).setValue('Total').setFontWeight('bold');
+  for (var c = 2; c <= totalCol; c++) {
+    var cl = String.fromCharCode(64 + c);
+    sum.getRange(totalRow, c).setFormula('=SUM(' + cl + '10:' + cl + (totalRow - 1) + ')').setFontWeight('bold');
+  }
+
+  var tr = totalRow + 2;
+  sum.getRange(tr, 1).setValue('Volume').setFontWeight('bold');
+  sum.getRange(tr + 1, 1).setValue('This week (since Monday)');
+  sum.getRange(tr + 1, 2).setFormula('=COUNTIFS(' + enq('Received (IST)') + ',">="&(TODAY()-WEEKDAY(TODAY(),2)+1))');
+  sum.getRange(tr + 2, 1).setValue('This month');
+  sum.getRange(tr + 2, 2).setFormula('=COUNTIFS(' + enq('Received (IST)') + ',">="&DATE(YEAR(TODAY()),MONTH(TODAY()),1))');
+  sum.getRange(tr + 3, 1).setValue('All time');
+  sum.getRange(tr + 3, 2).setFormula('=COUNTA(' + enq('ID') + ')');
+  sum.setColumnWidth(1, 220);
+
+  // Remove the default empty sheet if it is still there.
+  var blank = ss.getSheetByName('Sheet1');
+  if (blank && blank.getLastRow() === 0 && ss.getSheets().length > 1) ss.deleteSheet(blank);
+
+  SpreadsheetApp.flush();
+  console.log('Setup complete. Now deploy the web app (Deploy > New deployment > Web app).');
+}
+
+function statusRule_() {
+  return SpreadsheetApp.newDataValidation().requireValueInList(STATUSES, true).setAllowInvalid(false).build();
+}

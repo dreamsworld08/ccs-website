@@ -1,0 +1,12 @@
+{
+  "student_name": "Gagandeep Singh",
+  "exam": "Punjab Police",
+  "exam_year": "2025",
+  "rank_label": "Rank 08",
+  "photo": "/uploads/placeholders/person-1.svg",
+  "quote": "Physical plus written preparation, both covered.",
+  "show_on_home": false,
+  "order": 9,
+  "published": true,
+  "dummy": true
+}

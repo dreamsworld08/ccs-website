@@ -1,0 +1,534 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-primary: #0042f6;
+  --color-primary-dark: #0033c4;
+  --color-ink: #1a1b1f;
+  --color-panel: #edf0f5;
+  --color-line: #e0e4ea;
+  --color-muted: #5b6170;
+  --color-accent-orange: #ff5c33;
+  --color-saffron: #ffb41f;
+  --color-violet: #6047ff;
+  --color-success: #11ad25;
+  --color-mint: #dff6e2;
+  --color-lavender: #eceafe;
+  --color-sky: #ebf6ff;
+  --color-sand: #f5e9d8;
+  --color-peach: #feeeea;
+
+  /* System fonts only: zero font downloads, instant text rendering, native feel on every phone.
+     Headings use each platform's condensed bold (Avenir Next Condensed on iOS/macOS,
+     Roboto Condensed on Android, Bahnschrift/Arial Narrow on Windows). */
+  --font-heading:
+    'Avenir Next Condensed', 'Roboto Condensed', 'sans-serif-condensed', 'Arial Narrow',
+    'Bahnschrift', 'Franklin Gothic Medium', 'Helvetica Neue', system-ui, sans-serif;
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono:
+    ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+
+  --radius-panel: 32px;
+  --radius-card: 28px;
+  --radius-img: 20px;
+  --radius-input: 14px;
+
+  --animate-marquee: marquee 38s linear infinite;
+  @keyframes marquee {
+    to {
+      transform: translateX(-50%);
+    }
+  }
+}
+
+@layer base {
+  /* A <picture> wrapper must never change layout: the <img> inside is positioned by its own classes. */
+  picture {
+    display: contents;
+  }
+  /* No long-press "Save image" sheet on phones, no dragging a picture out of the page (see scripts/protect.ts). */
+  img {
+    -webkit-touch-callout: none;
+    -webkit-user-drag: none;
+    user-select: none;
+  }
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    font-family: var(--font-sans);
+    color: var(--color-ink);
+    background: #fff;
+    font-size: 16px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: clip; /* safety net only; scripts/check-layout.mjs verifies nothing relies on it */
+  }
+  @media (min-width: 768px) {
+    body {
+      font-size: 18px;
+    }
+  }
+  img,
+  video,
+  iframe {
+    max-width: 100%;
+  }
+  :focus-visible {
+    outline: 3px solid var(--color-primary);
+    outline-offset: 3px;
+    border-radius: 6px;
+  }
+  .on-dark :focus-visible,
+  .on-primary :focus-visible {
+    outline-color: #fff;
+  }
+  ::selection {
+    background: var(--color-primary);
+    color: #fff;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  /* ---- Type scale: Display 104/52, H2 72/40, H3 24/20 (desktop / mobile) ---- */
+  .display,
+  .h2,
+  .h3 {
+    font-family: var(--font-heading);
+    font-weight: 700;
+    text-transform: uppercase;
+    font-stretch: condensed;
+    line-height: 0.94;
+    letter-spacing: -0.005em;
+    text-wrap: balance;
+    overflow-wrap: break-word; /* a long word can never push the page sideways on a 320px phone */
+    hyphens: manual;
+  }
+  .display {
+    font-size: clamp(2.75rem, 1.6rem + 5.6vw, 6.5rem);
+  }
+  .h2 {
+    font-size: clamp(2.25rem, 1.3rem + 3.7vw, 4.5rem);
+  }
+  .h3 {
+    font-size: clamp(1.25rem, 1.1rem + 0.5vw, 1.5rem);
+    line-height: 1.02;
+  }
+  .small {
+    font-size: 14px;
+  }
+  .mono {
+    font-family: var(--font-mono);
+  }
+
+  /* ---- Layout ---- */
+  .container-x {
+    width: 100%;
+    max-width: 1360px;
+    margin-inline: auto;
+    padding-inline: 20px;
+  }
+  @media (min-width: 768px) {
+    .container-x {
+      padding-inline: 40px;
+    }
+  }
+  .panel {
+    border-radius: 24px;
+    overflow: hidden;
+    position: relative;
+  }
+  .section-pad {
+    padding-block: 40px;
+  }
+  @media (min-width: 768px) {
+    .section-pad {
+      padding-block: 96px;
+    }
+  }
+
+  /* ---- Buttons: pill, 14px 24px, Inter 500 15px ---- */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 14px 24px;
+    border-radius: 9999px;
+    font-family: var(--font-sans);
+    font-weight: 500;
+    font-size: 15px;
+    line-height: 1.2;
+    text-decoration: none;
+    cursor: pointer;
+    border: 1px solid transparent;
+    white-space: nowrap;
+    transition:
+      background-color 0.18s,
+      color 0.18s,
+      transform 0.18s,
+      border-color 0.18s;
+  }
+  .btn:active {
+    transform: scale(0.98);
+  }
+  .btn[disabled] {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+  .btn-primary {
+    background: var(--color-primary);
+    color: #fff;
+  }
+  .btn-primary:hover {
+    background: var(--color-primary-dark);
+  }
+  .btn-dark {
+    background: var(--color-ink);
+    color: #fff;
+  }
+  .btn-dark:hover {
+    background: #34363d;
+  }
+  .btn-secondary {
+    background: var(--color-panel);
+    color: var(--color-ink);
+  }
+  .btn-secondary:hover {
+    background: #dfe4ec;
+  }
+  .btn-white {
+    background: #fff;
+    color: var(--color-ink);
+  }
+  .btn-white:hover {
+    background: var(--color-panel);
+  }
+  .btn-outline {
+    border-color: var(--color-line);
+    background: transparent;
+    color: var(--color-ink);
+  }
+  .btn-outline:hover {
+    background: var(--color-panel);
+  }
+  .btn-sm {
+    padding: 9px 16px;
+    font-size: 14px;
+  }
+
+  /* ---- Chips ---- */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 9999px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    line-height: 1.2;
+    background: var(--color-panel);
+    color: var(--color-ink);
+  }
+  .chip-kicker {
+    background: var(--color-saffron);
+    color: var(--color-ink);
+  }
+  .chip-live {
+    background: var(--color-accent-orange);
+    color: var(--color-ink);
+  }
+  .chip-line {
+    background: transparent;
+    border: 1px solid var(--color-line);
+  }
+  .filter-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 9px 18px;
+    border-radius: 9999px;
+    background: var(--color-panel);
+    color: var(--color-ink);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition:
+      background-color 0.15s,
+      color 0.15s;
+  }
+  .filter-chip:hover {
+    background: #dfe4ec;
+  }
+  .filter-chip[aria-pressed='true'] {
+    background: var(--color-ink);
+    color: #fff;
+  }
+
+  /* ---- Cards ---- */
+  .card {
+    border-radius: 18px;
+    background: #fff;
+    border: 1px solid var(--color-line);
+    overflow: hidden;
+  }
+  @media (min-width: 768px) {
+    .card {
+      border-radius: var(--radius-card);
+    }
+    .panel {
+      border-radius: var(--radius-panel);
+    }
+  }
+
+  /* ---- Form controls ---- */
+  .field-label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 14px;
+    font-weight: 500;
+  }
+  .input {
+    width: 100%;
+    min-height: 48px;
+    padding: 12px 16px;
+    border-radius: var(--radius-input);
+    background: var(--color-panel);
+    border: 1px solid transparent;
+    color: var(--color-ink);
+    font: inherit;
+    font-size: 16px;
+    transition:
+      border-color 0.15s,
+      background-color 0.15s;
+  }
+  .input::placeholder {
+    color: #7b8191;
+  }
+  .input:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    background: #fff;
+    box-shadow: 0 0 0 3px rgb(0 66 246 / 0.18);
+  }
+  .input[aria-invalid='true'] {
+    border-color: #d1321a;
+    background: #fff;
+  }
+  select.input {
+    appearance: none;
+    padding-right: 44px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%231A1B1F' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 16px center;
+  }
+  textarea.input {
+    resize: vertical;
+    min-height: 88px;
+  }
+  .field-error {
+    margin-top: 4px;
+    font-size: 13px;
+    color: #c0301a;
+  }
+}
+
+/* Visually hidden (honeypot, skip link text) */
+.sr-only-x {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Footer marquee */
+.marquee-track {
+  display: flex;
+  width: max-content;
+  animation: marquee 38s linear infinite;
+}
+.marquee:hover .marquee-track {
+  animation-play-state: paused;
+}
+/* Soft edges so the scrolling words fade out instead of being chopped off at the panel edge. */
+.marquee {
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 7%, #000 93%, transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 7%, #000 93%, transparent 100%);
+}
+/* No motion wanted: show the names as a calm wrapped list instead of a cropped, frozen strip. */
+@media (prefers-reduced-motion: reduce) {
+  .marquee {
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+  .marquee-track {
+    animation: none !important;
+    width: auto;
+    padding-inline: 20px;
+  }
+  .marquee-set {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+  .marquee-set + .marquee-set {
+    display: none;
+  }
+}
+
+/* Scroll-snap carousel without visible scrollbar */
+.carousel {
+  display: flex;
+  gap: 16px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 4px;
+}
+.carousel::-webkit-scrollbar {
+  display: none;
+}
+.carousel > * {
+  scroll-snap-align: start;
+  flex: 0 0 auto;
+}
+
+/* Rich-ish text pages (privacy policy) */
+.prose-ccs h2 {
+  font-family: var(--font-heading);
+  text-transform: uppercase;
+  font-weight: 700;
+  font-size: 28px;
+  line-height: 1;
+  margin: 40px 0 12px;
+}
+.prose-ccs p,
+.prose-ccs li {
+  color: var(--color-muted);
+  margin-bottom: 12px;
+}
+.prose-ccs ul {
+  list-style: disc;
+  padding-left: 22px;
+}
+.prose-ccs a {
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+
+/* ---- Enquiry popup: native <dialog> (system focus trap, Esc, backdrop) ----
+   Bottom sheet on phones, two-column modal from 768px. */
+.ccs-dialog {
+  padding: 0;
+  border: 0;
+  background: #fff;
+  color: var(--color-ink);
+  width: 100%;
+  max-width: 100%;
+  max-height: 94dvh;
+  margin: auto 0 0;
+  border-radius: 28px 28px 0 0;
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+.ccs-dialog::backdrop {
+  background: rgb(26 27 31 / 0.65);
+}
+.ccs-dialog[open] {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+}
+@media (min-width: 768px) {
+  .ccs-dialog {
+    margin: auto;
+    width: min(980px, calc(100vw - 48px));
+    max-height: 90dvh;
+    border-radius: var(--radius-panel);
+  }
+  .ccs-dialog[open] {
+    grid-template-columns: minmax(0, 370px) minmax(0, 1fr);
+  }
+}
+html:has(dialog[open]) {
+  overflow: hidden;
+}
+/* System-level easing only: a short fade/slide on browsers that support @starting-style. */
+@media (prefers-reduced-motion: no-preference) {
+  .ccs-dialog,
+  .ccs-dialog::backdrop {
+    transition:
+      opacity 0.2s ease,
+      transform 0.2s ease,
+      display 0.2s allow-discrete,
+      overlay 0.2s allow-discrete;
+    opacity: 0;
+  }
+  .ccs-dialog {
+    transform: translateY(24px);
+  }
+  .ccs-dialog[open],
+  .ccs-dialog[open]::backdrop {
+    opacity: 1;
+  }
+  .ccs-dialog[open] {
+    transform: none;
+  }
+  @starting-style {
+    .ccs-dialog[open],
+    .ccs-dialog[open]::backdrop {
+      opacity: 0;
+    }
+    .ccs-dialog[open] {
+      transform: translateY(24px);
+    }
+  }
+}
+
+/* ---- Instagram reel player: native <dialog>, narrow 9:16 column on every screen ---- */
+.reel-dialog {
+  padding: 0;
+  border: 0;
+  background: var(--color-ink);
+  color: #fff;
+  width: min(380px, calc(100vw - 24px));
+  max-height: 96dvh;
+  margin: auto;
+  border-radius: 24px;
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+.reel-dialog::backdrop {
+  background: rgb(10 11 14 / 0.78);
+}
+.reel-frame-wrap {
+  background: #000;
+  height: min(70dvh, 640px);
+}
+.reel-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #000;
+}

@@ -1,0 +1,42 @@
+{
+  "slug": "patwari-crash-course",
+  "internal_name": "Patwari Crash Course",
+  "published": false,
+  "show_on_main_site": false,
+  "seo_title": "Patwari Crash Course | Chandigarh Civil Services",
+  "seo_description": "A focused crash course for the PSSSB Patwari exam with daily tests and Punjab GK.",
+  "hero_kicker": "Crash course · Batch starting soon",
+  "hero_headline": "Crack Patwari in 90 days",
+  "hero_subtext": "Daily tests, Punjab GK and a clear plan from day one.",
+  "hero_bullets": [
+    "Daily practice tests",
+    "Complete Punjab GK coverage",
+    "Small batches, personal attention"
+  ],
+  "countdown_date": "",
+  "default_exam": "Punjab One Day Exams",
+  "benefits": [
+    {
+      "title": "Daily tests",
+      "text": "Practice every day with instant feedback."
+    },
+    {
+      "title": "Punjab GK",
+      "text": "The complete Punjab syllabus in one place."
+    },
+    {
+      "title": "Small batches",
+      "text": "Every student gets attention."
+    }
+  ],
+  "show_toppers": false,
+  "faqs": [
+    {
+      "q": "How long is the course?",
+      "a": "Ninety days with daily classes."
+    }
+  ],
+  "cta_headline": "Join the next Patwari batch",
+  "cta_button_label": "Enquire now",
+  "dummy": true
+}

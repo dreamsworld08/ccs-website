@@ -1,0 +1,61 @@
+---
+import Icon from './Icon.astro';
+import EnquiryForm from '../islands/EnquiryForm';
+import type { getSettings } from '../lib/site';
+
+interface Props {
+  headline: string;
+  subtext?: string;
+  points?: string[];
+  settings: Awaited<ReturnType<typeof getSettings>>;
+  idPrefix?: string;
+  defaultExam?: string;
+  source?: string;
+  submitLabel?: string;
+}
+const {
+  headline,
+  subtext,
+  points = [],
+  settings,
+  idPrefix = 'cta',
+  defaultExam = '',
+  source,
+  submitLabel,
+} = Astro.props;
+---
+
+<section
+  class="panel bg-[linear-gradient(135deg,#EBF6FF_0%,#ECEAFE_55%,#FEEEEA_100%)]"
+  id="enquire"
+>
+  <div class="container-x section-pad grid gap-10 lg:grid-cols-[1.1fr_1fr] lg:gap-16 items-center">
+    <div class="min-w-0">
+      <span class="chip chip-kicker mb-5">Free counselling</span>
+      <h2 class="h2 mb-5">{headline}</h2>
+      {subtext && <p class="text-muted text-[16px] md:text-[19px] max-w-[560px] mb-7">{subtext}</p>}
+      <ul class="grid gap-3.5">
+        {points.map((p) => (
+          <li class="flex items-start gap-3 text-[16px] md:text-[17px]">
+            <span class="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-white">
+              <Icon name="check" size={14} />
+            </span>
+            {p}
+          </li>
+        ))}
+      </ul>
+    </div>
+    <div class="min-w-0 rounded-[28px] bg-white p-5 md:p-8 shadow-[0_20px_60px_-30px_rgb(26_27_31/0.35)]">
+      <EnquiryForm
+        client:visible
+        idPrefix={idPrefix}
+        years={settings.attempt_years}
+        whatsapp={settings.whatsapp_number}
+        phone={settings.phone}
+        defaultExam={defaultExam}
+        source={source}
+        submitLabel={submitLabel}
+      />
+    </div>
+  </div>
+</section>

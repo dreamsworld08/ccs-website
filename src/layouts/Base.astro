@@ -1,0 +1,110 @@
+---
+import '../styles/global.css';
+import Navbar from '../components/Navbar.astro';
+import Footer from '../components/Footer.astro';
+import WhatsAppFab from '../components/WhatsAppFab.astro';
+import EnquiryPopup from '../islands/EnquiryPopup';
+import { absoluteUrl, getSettings, withBase, BASE } from '../lib/site';
+
+interface Props {
+  title: string;
+  description?: string;
+  /** Open Graph image path (site-relative) */
+  image?: string;
+  noindex?: boolean;
+  /** Structured data object(s) serialised into JSON-LD */
+  jsonLd?: object | object[];
+  /** Landing pages use a minimal header/footer, no popup and no auto-popup */
+  landing?: boolean;
+}
+
+const {
+  title,
+  description = 'Chandigarh Civil Services: expert coaching for UPSC CSE, Punjab PCS and Punjab one-day exams, with free resources, exam updates and free counselling.',
+  image = '/og-default.png',
+  noindex = false,
+  jsonLd,
+  landing = false,
+} = Astro.props;
+
+const settings = await getSettings();
+const canonical = new URL(Astro.url.pathname, Astro.site).toString();
+const ogImage = absoluteUrl(image, Astro.site);
+const fullTitle = title.includes('Chandigarh Civil Services')
+  ? title
+  : `${title} | Chandigarh Civil Services`;
+// "</script>" inside editable text must never be able to close the JSON-LD tag.
+const ld = jsonLd ? JSON.stringify(jsonLd).replace(/</g, '\\u003c') : '';
+const benefits = [
+  'Free 1-on-1 counselling with a mentor',
+  'Personalised plan for your attempt year',
+  'Free notes, PYQs and weekly tests',
+];
+---
+
+<!doctype html>
+<html lang="en" data-base={BASE}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>{fullTitle}</title>
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#ffffff" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    {noindex && <meta name="robots" content="noindex, nofollow" />}
+    <link rel="canonical" href={canonical} />
+    <link rel="icon" type="image/svg+xml" href={withBase('/favicon.svg')} />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Chandigarh Civil Services" />
+    <meta property="og:title" content={fullTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={ogImage} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="generator" content={Astro.generator} />
+    {ld && <script type="application/ld+json" set:html={ld} />}
+  </head>
+  <body>
+    {landing ? <slot name="header" /> : <Navbar settings={settings} />}
+    <main id="main" class="grid grid-cols-[minmax(0,1fr)] gap-2 px-2 pb-2">
+      <slot />
+    </main>
+    {landing ? <slot name="footer" /> : <Footer settings={settings} />}
+    <WhatsAppFab number={settings.whatsapp_number} lifted={landing} />
+    {!landing && (
+      <EnquiryPopup
+        client:idle
+        autoOpen={true}
+        benefits={benefits}
+        years={settings.attempt_years}
+        whatsapp={settings.whatsapp_number}
+        phone={settings.phone}
+      />
+    )}
+    <script>
+      import '../scripts/protect';
+      import { captureUtm, openEnquiry } from '../lib/enquiry';
+
+      // Remember utm_* for the whole session so every form can attach them.
+      captureUtm();
+
+      // A form that has not hydrated yet must never submit natively: that would reload the page
+      // and put the visitor's name and mobile number into the URL. Ignore it; hydration takes ms.
+      document.addEventListener(
+        'submit',
+        (e) => {
+          if ((e.target as Element).closest('astro-island[ssr]')) e.preventDefault();
+        },
+        true,
+      );
+
+      // Any element with data-open-enquiry opens the shared popup (optionally pre-selecting an exam).
+      document.addEventListener('click', (e) => {
+        const el = (e.target as Element).closest<HTMLElement>('[data-open-enquiry]');
+        if (!el) return;
+        e.preventDefault();
+        openEnquiry({ exam: el.dataset.exam || '', source: el.dataset.source || 'popup' });
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,203 @@
+---
+import Icon from '../Icon.astro';
+import Img from '../Img.astro';
+import HeroSearch from '../../islands/HeroSearch';
+import { withBase, safeHref, youtubeId, isMp4 } from '../../lib/site';
+import type { getHome } from '../../lib/site';
+
+interface Props {
+  home: Awaited<ReturnType<typeof getHome>>;
+}
+const { home } = Astro.props;
+const yt = youtubeId(home.hero_video_url);
+const mp4 = !yt && isMp4(safeHref(home.hero_video_url)) ? safeHref(home.hero_video_url) : '';
+const hasVideo = Boolean(yt || mp4);
+const poster = home.hero_poster ? withBase(home.hero_poster) : '';
+const btn2 = safeHref(home.hero_btn2_link, withBase('/courses'));
+const placeholder = home.hero_search_placeholder || 'Search resources, updates and results';
+---
+
+<!--
+  Layout: video (or poster) fills the panel behind the text; headline sits top-left; the search bar is
+  centred on the panel's bottom edge (half over the video, half over the page); the stat tiles follow.
+  The outer section is not clipped, so the search bar and its dropdown can overlap the panel's edge.
+-->
+<section
+  class:list={['relative z-20', home.stats.length ? '' : 'pb-9 md:pb-10']}
+  data-hero
+  data-yt={yt}
+  data-mp4={mp4}
+>
+  <div class="relative">
+    <div class="panel on-dark bg-[linear-gradient(150deg,#0A1B5C_0%,#0042F6_58%,#6047FF_130%)] text-white min-h-[560px] md:min-h-[680px]">
+      <div class="absolute inset-0 [container-type:size]" data-hero-media>
+        {poster && (
+          <Img
+            src={home.hero_poster}
+            alt=""
+            width={1600}
+            height={900}
+            sizes="100vw"
+            priority
+            class="absolute inset-0 h-full w-full object-cover"
+          />
+        )}
+        {mp4 && (
+          <video
+            class="absolute inset-0 h-full w-full object-cover"
+            muted
+            loop
+            playsinline
+            preload="none"
+            poster={poster}
+            aria-hidden="true"
+            tabindex="-1"
+            data-hero-video
+          >
+            <source src={mp4} />
+          </video>
+        )}
+      </div>
+      <div class="absolute inset-0 bg-[linear-gradient(to_bottom,rgb(26_27_31/0.72)_0%,rgb(26_27_31/0.4)_55%,rgb(26_27_31/0.55)_100%)]"></div>
+
+      {hasVideo && (
+        <button
+          type="button"
+          data-hero-sound
+          class="absolute right-3 top-3 z-10 inline-flex min-h-11 items-center gap-2 rounded-full bg-white/90 px-4 py-2 text-[14px] font-medium text-ink backdrop-blur hover:bg-white md:right-5 md:top-5"
+        >
+          <span data-sound-icon>
+            <Icon name="play" size={16} />
+          </span>
+          <span data-sound-label>Play video</span>
+        </button>
+      )}
+
+      <div class="container-x relative pt-14 pb-28 md:pt-20 md:pb-36">
+        {home.hero_kicker && (
+          <p class="mb-3 text-[13px] font-medium uppercase tracking-[0.18em] text-white/90 md:mb-4 md:text-[15px]">
+            {home.hero_kicker}
+          </p>
+        )}
+        <h1 class="display max-w-[1000px]">{home.hero_headline}</h1>
+        {home.hero_subtext && (
+          <p class="mt-4 max-w-[600px] text-[16px] text-white/85 md:mt-5 md:text-[19px]">
+            {home.hero_subtext}
+          </p>
+        )}
+        <div class="mt-6 flex flex-col gap-3 sm:flex-row md:mt-8">
+          <button
+            type="button"
+            class="btn btn-primary !bg-white !text-ink hover:!bg-panel sm:min-w-[220px]"
+            data-open-enquiry
+            data-exam=""
+          >
+            {home.hero_btn1_label}
+            <Icon name="arrow-right" size={18} />
+          </button>
+          <a
+            href={btn2}
+            class="btn btn-outline !border-white/40 !text-white hover:!bg-white/10 sm:min-w-[180px]"
+          >
+            {home.hero_btn2_label}
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <div class="absolute inset-x-0 bottom-0 translate-y-1/2 px-4 md:px-10">
+      <HeroSearch
+        client:idle
+        searchUrl={withBase('/search/')}
+        placeholder={placeholder}
+        popular={home.hero_search_popular}
+      />
+    </div>
+  </div>
+
+  {home.stats.length > 0 && (
+    <dl class="mt-12 grid grid-cols-2 gap-2 md:mt-16 md:grid-cols-4 md:gap-3">
+      {home.stats.slice(0, 4).map((s, i) => (
+        <div
+          class:list={[
+            'flex flex-col rounded-[20px] p-4 md:rounded-[28px] md:p-6',
+            i === 0 ? 'on-primary bg-primary text-white' : 'bg-panel text-ink',
+          ]}
+        >
+          <dt
+            class:list={[
+              'order-2 mt-1 text-[12px] leading-snug md:text-[14px]',
+              i === 0 ? 'text-white/85' : 'text-muted',
+            ]}
+          >
+            {s.label}
+          </dt>
+          <dd class="mono text-[26px] font-medium leading-none md:text-[40px]">{s.value}</dd>
+        </div>
+      ))}
+    </dl>
+  )}
+</section>
+
+<script>
+  // The hero video is a progressive enhancement: the poster paints first (best LCP),
+  // and the YouTube player is fetched only when it will actually be useful.
+  const hero = document.querySelector<HTMLElement>('[data-hero]');
+  const btn = hero?.querySelector<HTMLButtonElement>('[data-hero-sound]');
+  if (hero && btn) {
+    const yt = hero.dataset.yt || '';
+    const mp4 = hero.dataset.mp4 || '';
+    const media = hero.querySelector<HTMLElement>('[data-hero-media]')!;
+    const video = hero.querySelector<HTMLVideoElement>('[data-hero-video]');
+    const conn = (
+      navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }
+    ).connection;
+    const lowData = Boolean(conn?.saveData) || /(^|-)(2|3)g/.test(conn?.effectiveType ?? '');
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    // Phones and slow connections get the poster plus a play button; desktops autoplay muted.
+    const autoplay = window.matchMedia('(min-width: 768px)').matches && !lowData && !reduce;
+    let frame: HTMLIFrameElement | null = null;
+    let state: 'idle' | 'muted' | 'sound' = 'idle';
+
+    const label = btn.querySelector<HTMLElement>('[data-sound-label]')!;
+    const paint = () => {
+      label.textContent = state === 'idle' ? 'Play video' : state === 'muted' ? 'Sound on' : 'Mute';
+      btn.setAttribute('aria-label', label.textContent!);
+    };
+    const ytSrc = (mute: boolean) =>
+      `https://www.youtube-nocookie.com/embed/${yt}?autoplay=1&mute=${mute ? 1 : 0}&loop=1&playlist=${yt}&controls=0&playsinline=1&rel=0&modestbranding=1&iv_load_policy=3&disablekb=1`;
+
+    function play(mute: boolean) {
+      if (yt && /^[\w-]{11}$/.test(yt)) {
+        if (!frame) {
+          frame = document.createElement('iframe');
+          frame.title = 'Hero video';
+          frame.allow = 'autoplay; encrypted-media; picture-in-picture';
+          frame.tabIndex = -1;
+          frame.setAttribute('aria-hidden', 'true');
+          // Cover the panel like object-fit: cover (container query units).
+          frame.style.cssText =
+            'position:absolute;top:50%;left:50%;border:0;pointer-events:none;transform:translate(-50%,-50%);width:max(100cqw,177.78cqh);height:max(100cqh,56.25cqw)';
+          media.appendChild(frame);
+        }
+        frame.src = ytSrc(mute);
+      } else if (video && mp4) {
+        video.muted = mute;
+        void video.play();
+      }
+      state = mute ? 'muted' : 'sound';
+      paint();
+    }
+
+    btn.addEventListener('click', () => play(state === 'sound'));
+    paint();
+    if (autoplay) {
+      const start = () =>
+        'requestIdleCallback' in window
+          ? requestIdleCallback(() => play(true))
+          : setTimeout(() => play(true), 1500);
+      if (document.readyState === 'complete') start();
+      else window.addEventListener('load', start, { once: true });
+    }
+  }
+</script>

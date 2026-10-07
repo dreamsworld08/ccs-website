@@ -1,0 +1,25 @@
+---
+import Base from '../layouts/Base.astro';
+import Icon from '../components/Icon.astro';
+import { withBase } from '../lib/site';
+---
+
+<Base title="Page not found" noindex>
+  <section class="panel bg-panel">
+    <div class="container-x flex min-h-[60vh] flex-col items-start justify-center py-16">
+      <span class="chip chip-live mb-6">Error 404</span>
+      <h1 class="display mb-6">This page took a different route</h1>
+      <p class="mb-8 max-w-[520px] text-[17px] text-muted">
+        The page you are looking for does not exist or has moved. Let us get you back on track.
+      </p>
+      <div class="flex flex-col gap-3 sm:flex-row">
+        <a href={withBase('/')} class="btn btn-primary">
+          Back to home <Icon name="arrow-right" size={18} />
+        </a>
+        <a href={withBase('/courses')} class="btn btn-secondary">
+          Browse courses
+        </a>
+      </div>
+    </div>
+  </section>
+</Base>

@@ -1,0 +1,42 @@
+---
+import { pictureFor } from '../lib/images';
+import { withBase } from '../lib/site';
+
+/**
+ * An uploaded picture. On the live site it offers the browser a few sizes in AVIF and WebP (made at build
+ * time), so a phone downloads a few KB instead of the full upload. Anything else (SVG, links to other
+ * sites, `astro dev`) is a plain <img> exactly as before.
+ *
+ * `sizes` tells the browser how wide the picture is on screen, so it can choose a copy before layout.
+ */
+interface Props {
+  src: string;
+  alt: string;
+  width: number;
+  height: number;
+  sizes: string;
+  class?: string;
+  /** The first big picture on the page (the hero): load it immediately instead of lazily. */
+  priority?: boolean;
+}
+const { src, alt, width, height, sizes, class: cls, priority = false } = Astro.props;
+const pic = await pictureFor(src);
+const attrs = {
+  alt,
+  width,
+  height,
+  class: cls,
+  decoding: 'async' as const,
+  ...(priority ? { fetchpriority: 'high' as const } : { loading: 'lazy' as const }),
+};
+---
+
+{pic ? (
+  <picture>
+    {pic.avif && <source type="image/avif" srcset={pic.avif} sizes={sizes} />}
+    {pic.webp && <source type="image/webp" srcset={pic.webp} sizes={sizes} />}
+    <img src={pic.src} {...attrs} />
+  </picture>
+) : (
+  <img src={withBase(src)} {...attrs} />
+)}

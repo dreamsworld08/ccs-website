@@ -1,0 +1,44 @@
+---
+import Icon from '../Icon.astro';
+import ExamUpdateRow from '../ExamUpdateRow.astro';
+import ExamUpdatesSignup from '../../islands/ExamUpdatesSignup';
+import { withBase, getExamUpdates } from '../../lib/site';
+import type { getSettings } from '../../lib/site';
+interface Props {
+  settings: Awaited<ReturnType<typeof getSettings>>;
+}
+const { settings } = Astro.props;
+const latest = (await getExamUpdates()).slice(0, 3);
+---
+
+<section class="panel on-dark bg-ink text-white">
+  <div class="container-x section-pad grid gap-10 lg:grid-cols-[1.4fr_1fr] lg:gap-16">
+    <div class="min-w-0">
+      <span class="chip chip-live mb-5">Live updates</span>
+      <h2 class="h2 mb-8">Never miss an exam update</h2>
+      {latest.length > 0 ? (
+        <ul>
+          {latest.map((u) => (
+            <ExamUpdateRow update={u} dark compact />
+          ))}
+        </ul>
+      ) : (
+        <p class="text-white/70">
+          No updates yet. Register and we will message you as soon as there is one.
+        </p>
+      )}
+      <a href={withBase('/exam-updates')} class="btn btn-white mt-8">
+        All exam updates <Icon name="arrow-right" size={18} />
+      </a>
+    </div>
+    <div class="min-w-0 self-start">
+      <ExamUpdatesSignup
+        client:visible
+        tone="dark"
+        idPrefix="strip"
+        whatsapp={settings.whatsapp_number}
+        phone={settings.phone}
+      />
+    </div>
+  </div>
+</section>

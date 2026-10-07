@@ -1,0 +1,61 @@
+---
+import Base from '../layouts/Base.astro';
+import PageHeader from '../components/PageHeader.astro';
+import { getSettings } from '../lib/site';
+const settings = await getSettings();
+---
+
+<Base
+  title="Privacy Policy"
+  description="How Chandigarh Civil Services collects and uses the details you share through our enquiry forms."
+>
+  <PageHeader
+    kicker="Legal"
+    title="Privacy policy"
+    text="We collect only what we need to answer your enquiry."
+  />
+  <section class="panel bg-white border border-line">
+    <div class="container-x section-pad">
+      <div class="prose-ccs max-w-[760px]">
+        <h2>What we collect</h2>
+        <p>
+          When you submit an enquiry form we collect your name, mobile number and the exam you are
+          preparing for and, if you choose to share them, your year of attempt, email, city and
+          message. We also record the page you enquired from and campaign tags in the link you used
+          (utm_source, utm_medium, utm_campaign) so we know which advertisement reached you.
+        </p>
+        <h2>How we use it</h2>
+        <p>
+          Your details are used only to contact you by call or WhatsApp about our courses and to
+          send exam updates if you registered for them. We do not sell or share your data with
+          advertisers or other third parties.
+        </p>
+        <h2>Where it is stored</h2>
+        <p>
+          Enquiries are stored in a private spreadsheet that only authorised staff of Chandigarh
+          Civil Services can open. The website does not use advertising cookies. Your browser may
+          keep a few small items locally (for example, to avoid showing the same pop-up twice in a
+          session).
+        </p>
+        <h2>Your choices</h2>
+        <p>
+          You can ask us to correct or delete your details at any time by writing to{' '}
+          <a href={`mailto:${settings.email}`}>{settings.email}</a> or calling {settings.phone}.
+          Replying STOP to a WhatsApp message also ends further messages.
+        </p>
+        <h2>Third-party content</h2>
+        <p>
+          Some pages embed videos from YouTube and Instagram reels, and link to files on Google
+          Drive. These services have their own privacy policies. YouTube and Instagram only load
+          when you choose to play a video, and Google Drive only when you open a file.
+        </p>
+        <h2>Contact</h2>
+        <p>
+          {settings.address}
+          <br />
+          {settings.phone} · {settings.email}
+        </p>
+      </div>
+    </div>
+  </section>
+</Base>

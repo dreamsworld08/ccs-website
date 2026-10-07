@@ -1,0 +1,66 @@
+---
+import Icon from './Icon.astro';
+import Img from './Img.astro';
+import { safeHref } from '../lib/site';
+interface Props {
+  teacher: {
+    id: string;
+    data: {
+      name: string;
+      subject: string;
+      credential: string;
+      bio: string;
+      photo: string;
+      intro_video_url: string;
+    };
+  };
+  level?: 2 | 3;
+}
+const { teacher, level = 3 } = Astro.props;
+const Heading = `h${level}` as 'h2' | 'h3';
+const { name, subject, credential, bio, photo, intro_video_url } = teacher.data;
+const video = safeHref(intro_video_url);
+---
+
+<!-- Phones: compact horizontal card (photo left, details right, bio trimmed). From 768px: large vertical card. -->
+<article class="card flex h-full flex-row md:flex-col">
+  <div class="w-[96px] shrink-0 p-1.5 sm:w-[120px] md:w-auto md:p-2 md:pb-0">
+    <div class="relative h-full min-h-[128px] overflow-hidden rounded-[13px] bg-panel md:aspect-[4/5] md:h-auto md:min-h-0 md:rounded-[20px]">
+      {photo && (
+        <Img
+          src={photo}
+          alt={`Portrait of ${name}`}
+          width={600}
+          height={750}
+          sizes="(min-width: 1024px) 380px, (min-width: 768px) 46vw, 120px"
+          class="absolute inset-0 h-full w-full object-cover object-top"
+        />
+      )}
+      {credential && (
+        <span class="chip chip-kicker absolute bottom-3 left-3 hidden max-w-[calc(100%-24px)] !text-[12px] !normal-case !tracking-normal md:inline-flex">
+          {credential}
+        </span>
+      )}
+    </div>
+  </div>
+  <div class="flex min-w-0 flex-1 flex-col p-3 pl-2 md:p-6">
+    <p class="mono mb-1 text-[11px] uppercase tracking-wider text-primary md:mb-2 md:text-[12px]">
+      {subject}
+    </p>
+    <Heading class="h3 mb-1 !text-[18px] md:mb-3 md:!text-[24px]">{name}</Heading>
+    {credential && <p class="mb-1.5 text-[12px] text-muted md:hidden">{credential}</p>}
+    {bio && (
+      <p class="line-clamp-3 text-[13px] text-muted md:line-clamp-none md:text-[15px]">{bio}</p>
+    )}
+    {video && (
+      <a
+        href={video}
+        target="_blank"
+        rel="noopener noreferrer"
+        class="btn btn-secondary btn-sm mt-3 self-start md:mt-5"
+      >
+        <Icon name="play" size={16} /> Watch intro
+      </a>
+    )}
+  </div>
+</article>
