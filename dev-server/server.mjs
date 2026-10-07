@@ -387,12 +387,298 @@ const slugify = (s) =>
     .replace(/^-+|-+$/g, '')
     .slice(0, 40) || 'file';
 
+/* ------------------------------------------------------------------ Instagram live feed */
+// Same behaviour as the "Instagram live feed" section of Code.gs (read that for the reasoning). The token is
+// kept in the git-ignored dev-server/data/instagram.json. To try the feature without a Meta account,
+// connect with the token "demo": it shows sample posts and never contacts Instagram.
+const IG_FILE = join(DATA, 'instagram.json');
+const DAY = 24 * 3600 * 1000;
+const IG = {
+  API: 'https://graph.instagram.com',
+  FIELDS: 'id,caption,media_type,media_url,thumbnail_url,permalink,timestamp',
+  FETCH_LIMIT: 12,
+  FRESH_MS: 15 * 60 * 1000,
+  RETRY_MS: 2 * 60 * 1000,
+  TOKEN_LIFE_MS: 60 * DAY,
+  RENEW_AFTER_MS: 10 * DAY,
+  RENEW_RETRY_MS: 12 * 3600 * 1000,
+  MIN_COUNT: 3,
+  MAX_COUNT: 12,
+  DEFAULT_HEADING: 'Latest from our Instagram',
+};
+let ig = await readJson(IG_FILE, {});
+const saveIg = () => writeAtomic(IG_FILE, JSON.stringify(ig, null, 2));
+const igCache = { posts: null, freshUntil: 0, backoffUntil: 0 };
+const isDemo = () => String(ig.token || '').toLowerCase() === 'demo';
+
+const DEMO_MEDIA = [
+  [
+    'p',
+    'DemoPost001',
+    'Congratulations to our UPSC toppers! Hard work, discipline and the right guidance.',
+  ],
+  ['reel', 'DemoReel001', 'Watch: how Aman planned his last 90 days before Prelims.'],
+  [
+    'p',
+    'DemoPost002',
+    'Free counselling session this Saturday at our Sector 34 centre. Walk in and ask anything.',
+  ],
+  ['p', 'DemoPost003', 'Punjab PCS answer-writing workshop, notes inside.'],
+  ['reel', 'DemoReel002', 'Three mistakes to avoid in current affairs revision.'],
+  ['p', 'DemoPost004', 'Our Patwari batch results are in. Proud of every one of you.'],
+  ['p', 'DemoPost005', 'Weekly test series starts Monday. Link in bio.'],
+  ['reel', 'DemoReel003', 'A day at CCS: classes, doubt sessions and silent study hall.'],
+].map(([kind, code, caption], i) => ({
+  id: String(i + 1),
+  media_type: kind === 'reel' ? 'VIDEO' : 'IMAGE',
+  media_url: `/uploads/placeholders/reel-${(i % 6) + 1}.svg`,
+  thumbnail_url: `/uploads/placeholders/reel-${(i % 6) + 1}.svg`,
+  permalink: `https://www.instagram.com/${kind}/${code}/`,
+  caption,
+  timestamp: new Date(Date.now() - (i + 1) * 2 * DAY).toISOString().replace('Z', '+0000'),
+}));
+
+/** GET to the Instagram API: { code, body }, code 0 = could not connect. The URL (it holds the token) is never logged. */
+async function igCall(path, params) {
+  if (isDemo()) {
+    if (path === '/me/media') return { code: 200, body: { data: DEMO_MEDIA } };
+    if (path === '/refresh_access_token')
+      return { code: 200, body: { access_token: 'demo', expires_in: 60 * 24 * 3600 } };
+    return { code: 200, body: { username: 'ccs_demo', account_type: 'BUSINESS' } };
+  }
+  try {
+    const res = await fetch(`${IG.API}${path}?${new URLSearchParams(params)}`, {
+      signal: AbortSignal.timeout(15000),
+    });
+    let body = null;
+    try {
+      body = await res.json();
+    } catch {
+      /* not JSON */
+    }
+    return { code: res.status, body };
+  } catch {
+    console.warn('[dev-api] Instagram request failed to connect.');
+    return { code: 0, body: null };
+  }
+}
+function igError(r) {
+  if (r.code === 0) return 'Could not reach Instagram. Please try again in a minute.';
+  const err = r.body?.error;
+  if (err && (Number(err.code) === 190 || /token/i.test(String(err.message || ''))))
+    return 'Instagram no longer accepts this access token (it expired or was revoked). Generate a new token and connect again.';
+  if (err?.message) return `Instagram said: ${clip(err.message, 160)}`;
+  return `Instagram returned an unexpected answer (HTTP ${r.code}).`;
+}
+const IG_PERMALINK =
+  /^https:\/\/www\.instagram\.com\/(?:[A-Za-z0-9_.]+\/)?(reel|p|tv)\/([A-Za-z0-9_-]{5,20})\/?(?:[?#].*)?$/;
+const IG_CDN = /^https:\/\/[a-z0-9.-]+\.(cdninstagram\.com|fbcdn\.net)\//i;
+/** Only what the Home page needs, and only values it can safely use; anything unexpected drops the post. */
+function igCleanPosts(data) {
+  const posts = [];
+  for (const m of Array.isArray(data) ? data : []) {
+    if (!m || typeof m !== 'object') continue;
+    const ref = String(m.permalink || '').match(IG_PERMALINK);
+    const video = m.media_type === 'VIDEO';
+    const image = String(video ? (m.thumbnail_url ?? '') : (m.media_url ?? ''));
+    const okImage =
+      image.length <= 1000 &&
+      (IG_CDN.test(image) ||
+        (isDemo() && /^\/uploads\/placeholders\/[a-z0-9-]+\.svg$/.test(image)));
+    if (!ref || !okImage) continue;
+    posts.push({
+      kind: ref[1],
+      code: ref[2],
+      video,
+      image,
+      caption: clip(m.caption, 140),
+      ts: clip(m.timestamp, 30),
+    });
+  }
+  return posts;
+}
+async function igRenew() {
+  if (!ig.token) return { ok: false, error: 'Instagram is not connected.' };
+  const r = await igCall('/refresh_access_token', {
+    grant_type: 'ig_refresh_token',
+    access_token: ig.token,
+  });
+  if (r.code === 200 && r.body?.access_token) {
+    const now = Date.now();
+    ig.token = String(r.body.access_token);
+    ig.refreshed = now;
+    ig.expires =
+      now + (Number(r.body.expires_in) > 0 ? Number(r.body.expires_in) * 1000 : IG.TOKEN_LIFE_MS);
+    ig.expiresExact = true;
+    await saveIg();
+    return { ok: true };
+  }
+  return { ok: false, error: igError(r) };
+}
+async function igRenewIfDue() {
+  const now = Date.now();
+  if (
+    now - (ig.refreshed || 0) < IG.RENEW_AFTER_MS ||
+    now - (ig.renewTried || 0) < IG.RENEW_RETRY_MS
+  )
+    return;
+  ig.renewTried = now;
+  await igRenew();
+}
+/** The cleaned posts, from cache when possible: { posts, error?, stale? } */
+async function igFeed(force) {
+  if (!ig.token) return { posts: [], error: 'Instagram is not connected.' };
+  const now = Date.now();
+  if (!force && igCache.posts && now < igCache.freshUntil) return { posts: igCache.posts };
+  if (!force && now < igCache.backoffUntil)
+    return { posts: igCache.posts ?? [], error: ig.lastError || '', stale: Boolean(igCache.posts) };
+  await igRenewIfDue();
+  const r = await igCall('/me/media', {
+    fields: IG.FIELDS,
+    limit: IG.FETCH_LIMIT,
+    access_token: ig.token,
+  });
+  if (r.code === 200 && Array.isArray(r.body?.data)) {
+    igCache.posts = igCleanPosts(r.body.data);
+    igCache.freshUntil = Date.now() + IG.FRESH_MS;
+    igCache.backoffUntil = 0;
+    ig.lastOk = Date.now();
+    delete ig.lastError;
+    await saveIg();
+    return { posts: igCache.posts };
+  }
+  ig.lastError = igError(r);
+  igCache.backoffUntil = Date.now() + IG.RETRY_MS;
+  await saveIg();
+  return { posts: igCache.posts ?? [], error: ig.lastError, stale: Boolean(igCache.posts) };
+}
+function igSettings() {
+  const n = Number(ig.count);
+  return {
+    enabled: ig.enabled === true,
+    count: n >= IG.MIN_COUNT && n <= IG.MAX_COUNT ? Math.floor(n) : 8,
+    heading: ig.heading || IG.DEFAULT_HEADING,
+  };
+}
+/** PUBLIC: nothing at all unless the admin connected and enabled the feed. */
+async function instagramFeed() {
+  const s = igSettings();
+  if (!s.enabled || !ig.token) return { ok: true, enabled: false, posts: [] };
+  const feed = await igFeed(false);
+  const username = ig.username || '';
+  return {
+    ok: true,
+    enabled: true,
+    heading: s.heading,
+    username,
+    profile_url: username ? `https://www.instagram.com/${username}/` : '',
+    posts: feed.posts.slice(0, s.count),
+  };
+}
+/** ADMIN: everything the Instagram tab shows. The token itself is never included. */
+function igStatus() {
+  const s = igSettings();
+  return {
+    ok: true,
+    connected: Boolean(ig.token),
+    username: ig.username || '',
+    account_type: ig.accountType || '',
+    enabled: s.enabled,
+    count: s.count,
+    heading: s.heading,
+    days_left:
+      ig.token && ig.expires ? Math.max(0, Math.floor((ig.expires - Date.now()) / DAY)) : null,
+    expiry_estimated: ig.expiresExact !== true,
+    last_ok: ig.lastOk ? istNowOf(ig.lastOk) : '',
+    last_error: ig.lastError || '',
+  };
+}
+const istNowOf = (ms) =>
+  `${new Date(ms).toLocaleString('sv-SE', { timeZone: 'Asia/Kolkata' }).replace(' ', 'T')}+05:30`;
+async function getInstagram() {
+  const feed = ig.token ? await igFeed(false) : { posts: [] };
+  const status = igStatus();
+  status.posts = feed.posts.slice(0, status.count);
+  if (feed.error) status.last_error = feed.error;
+  return status;
+}
+async function connectInstagram(p) {
+  const token = String(p.access_token || '').replace(/\s/g, '');
+  if (!/^[A-Za-z0-9_.-]{20,600}$/.test(token) && token.toLowerCase() !== 'demo')
+    return {
+      ok: false,
+      error:
+        'That does not look like an Instagram access token. Copy the whole token and paste it again.',
+    };
+  const previous = ig.token;
+  ig.token = token; // isDemo() and igCall() read it
+  const r = await igCall('/me', { fields: 'user_id,username,account_type', access_token: token });
+  if (!(r.code === 200 && r.body?.username)) {
+    ig.token = previous;
+    return { ok: false, error: igError(r) };
+  }
+  const now = Date.now();
+  Object.assign(ig, {
+    username: /^[A-Za-z0-9_.]{1,30}$/.test(String(r.body.username)) ? String(r.body.username) : '',
+    accountType: clip(r.body.account_type, 30),
+    refreshed: now,
+    expires: now + IG.TOKEN_LIFE_MS,
+    expiresExact: false,
+  });
+  delete ig.lastError;
+  delete ig.renewTried;
+  if (!previous && ig.enabled === undefined) ig.enabled = true;
+  Object.assign(igCache, { posts: null, freshUntil: 0, backoffUntil: 0 });
+  await saveIg();
+  return getInstagram();
+}
+async function saveInstagramSettings(p) {
+  const count = Number(p.count);
+  if (!(count >= IG.MIN_COUNT && count <= IG.MAX_COUNT) || Math.floor(count) !== count)
+    return { ok: false, error: `Choose between ${IG.MIN_COUNT} and ${IG.MAX_COUNT} posts.` };
+  Object.assign(ig, {
+    enabled: p.enabled === 'true' || p.enabled === true,
+    count,
+    heading: clip(p.heading, 60) || IG.DEFAULT_HEADING,
+  });
+  await saveIg();
+  return getInstagram();
+}
+async function refreshInstagram() {
+  if (!ig.token) return { ok: false, error: 'Instagram is not connected.' };
+  const renewed = Date.now() - (ig.refreshed || 0) > DAY ? await igRenew() : null;
+  const feed = await igFeed(true);
+  const status = igStatus();
+  status.posts = feed.posts.slice(0, status.count);
+  status.last_error = feed.error || '';
+  if (renewed && !renewed.ok && !feed.error) status.last_error = renewed.error;
+  return status;
+}
+async function disconnectInstagram() {
+  for (const k of [
+    'token',
+    'username',
+    'accountType',
+    'refreshed',
+    'expires',
+    'expiresExact',
+    'renewTried',
+    'lastOk',
+    'lastError',
+  ])
+    delete ig[k];
+  Object.assign(igCache, { posts: null, freshUntil: 0, backoffUntil: 0 });
+  await saveIg();
+  return { ok: true };
+}
+
 /* ------------------------------------------------------------------ action router */
-const PUBLIC_ACTIONS = new Set(['submitEnquiry', 'login']);
+const PUBLIC_ACTIONS = new Set(['submitEnquiry', 'login', 'instagramFeed']);
 
 async function handle(p) {
   const action = String(p.action || '');
   if (action === 'submitEnquiry') return submitEnquiry(p);
+  if (action === 'instagramFeed') return instagramFeed();
 
   if (action === 'login') {
     const email = clip(p.email, 120).toLowerCase();
@@ -598,6 +884,17 @@ async function handle(p) {
       await writeAtomic(ADMINS_FILE, JSON.stringify(admins, null, 2));
       return { ok: true };
     }
+
+    case 'getInstagram':
+      return getInstagram();
+    case 'connectInstagram':
+      return connectInstagram(p);
+    case 'saveInstagramSettings':
+      return saveInstagramSettings(p);
+    case 'refreshInstagram':
+      return refreshInstagram();
+    case 'disconnectInstagram':
+      return disconnectInstagram();
 
     default:
       return { ok: false, error: 'Unknown action.' };

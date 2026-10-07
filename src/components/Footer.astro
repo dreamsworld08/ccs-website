@@ -74,14 +74,28 @@ const columns = [
     <div class="container-x pt-14 md:pt-20 pb-8">
       <div class="grid gap-12 lg:grid-cols-[1.1fr_1.6fr]">
         <div>
-          <img
-            src={withBase('/logo-light.svg')}
-            alt="Chandigarh Civil Services"
-            width="168"
-            height="40"
-            class="h-10 w-auto mb-6"
-            loading="lazy"
-          />
+          <a
+            href={withBase('/')}
+            class="mb-6 inline-flex items-center gap-3"
+            aria-label="Chandigarh Civil Services, home"
+          >
+            <span class="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-white p-1.5">
+              <img
+                src={withBase('/brand/logo-mark.webp')}
+                alt=""
+                width="52"
+                height="52"
+                class="h-full w-full"
+                loading="lazy"
+              />
+            </span>
+            <span class="font-heading font-bold uppercase leading-none" aria-hidden="true">
+              <span class="block text-[26px] tracking-[0.04em] text-white">Chandigarh</span>
+              <span class="mt-1 block text-[13px] tracking-[0.2em] text-brand-gold">
+                Civil Services
+              </span>
+            </span>
+          </a>
           <address class="not-italic grid gap-3 text-white/80 text-[16px]">
             <span class="flex gap-3">
               <Icon name="map-pin" size={18} class="mt-1 shrink-0" />

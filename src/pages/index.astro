@@ -5,6 +5,7 @@ import Founder from '../components/home/Founder.astro';
 import FeaturedCourses from '../components/home/FeaturedCourses.astro';
 import ResourcesCarousel from '../components/home/ResourcesCarousel.astro';
 import ReelsCarousel from '../components/ReelsCarousel.astro';
+import InstagramFeed from '../components/InstagramFeed.astro';
 import ExamUpdatesStrip from '../components/home/ExamUpdatesStrip.astro';
 import Toppers from '../components/home/Toppers.astro';
 import CtaPanel from '../components/CtaPanel.astro';
@@ -17,7 +18,7 @@ const jsonLd = {
   '@type': 'EducationalOrganization',
   name: 'Chandigarh Civil Services',
   url: absoluteUrl('/', Astro.site),
-  logo: absoluteUrl('/logo.svg', Astro.site),
+  logo: absoluteUrl('/brand/logo-full.png', Astro.site),
   image: absoluteUrl(home.hero_poster || '/og-default.png', Astro.site),
   telephone: settings.phone,
   email: settings.email,
@@ -41,6 +42,7 @@ const jsonLd = {
   <FeaturedCourses home={home} />
   <ResourcesCarousel />
   <ReelsCarousel />
+  <InstagramFeed />
   <ExamUpdatesStrip settings={settings} />
   <Toppers home={home} />
   <CtaPanel

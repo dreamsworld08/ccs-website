@@ -1,0 +1,24 @@
+---
+import { withBase } from '../lib/site';
+---
+
+<!--
+  The school emblem with the name beside it, for a light background (header). The name is live text in the
+  site's own condensed font, in the logo's colours, so it stays sharp at any size; the link around it supplies
+  the accessible name. Below 380 px it is a little smaller so the header buttons keep their room.
+-->
+<img
+  src={withBase('/brand/logo-mark.webp')}
+  alt=""
+  width="48"
+  height="48"
+  class="h-9 w-9 min-[380px]:h-10 min-[380px]:w-10 sm:h-12 sm:w-12"
+/>
+<span class="font-heading font-bold uppercase leading-none" aria-hidden="true">
+  <span class="block text-[14px] tracking-[0.04em] text-brand-navy min-[380px]:text-[18px] sm:text-[22px]">
+    Chandigarh
+  </span>
+  <span class="mt-[3px] block text-[8px] tracking-[0.16em] text-brand-maroon min-[380px]:text-[10px] min-[380px]:tracking-[0.2em] sm:text-[12px]">
+    Civil Services
+  </span>
+</span>

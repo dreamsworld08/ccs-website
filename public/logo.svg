@@ -1,7 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 168 40" role="img" aria-label="Chandigarh Civil Services">
-  <rect width="40" height="40" rx="12" fill="#0042F6"/>
-  <path d="M26.5 14.2A8.4 8.4 0 1 0 26.5 25.8" fill="none" stroke="#fff" stroke-width="3.6" stroke-linecap="round"/>
-  <circle cx="29.2" cy="20" r="2.6" fill="#FFB41F"/>
-  <text x="52" y="19" font-family="Avenir Next Condensed, Roboto Condensed, Arial Narrow, Arial, sans-serif" font-weight="700" font-size="19" letter-spacing=".5" fill="#1A1B1F">CHANDIGARH</text>
-  <text x="52" y="35" font-family="Avenir Next Condensed, Roboto Condensed, Arial Narrow, Arial, sans-serif" font-weight="700" font-size="15" letter-spacing="1.6" fill="#0042F6">CIVIL SERVICES</text>
-</svg>

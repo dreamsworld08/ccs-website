@@ -63,7 +63,11 @@ Script Properties. The push triggers the deploy workflow, and the new build is l
 people edit the same item, the second save is rejected with a conflict and the latest version is loaded. The admin
 also watches `/build.json` to confirm the new build.
 
-**Secrets** (`GITHUB_TOKEN`, `GITHUB_REPO`, `SIGNING_SECRET`, the first admin's password) live only in Apps Script. The Apps Script URL in
+**The live Instagram feed** is the one thing that is _not_ built into the static site: the Home page asks Apps Script
+(`instagramFeed`, cached 15 minutes) for the latest posts when the page is idle and draws them in the browser. See
+[Live Instagram feed](#live-instagram-feed).
+
+**Secrets** (`GITHUB_TOKEN`, `GITHUB_REPO`, `SIGNING_SECRET`, the first admin's password, the Instagram access token) live only in Apps Script. The Apps Script URL in
 `src/config/backend.ts` is public by design; every admin action needs a valid token.
 
 ## Content
@@ -77,18 +81,18 @@ stored, and refuses to delete or copy `settings/site.json` and `home/home.json`.
 `src/admin/schemas.ts`: after changing it run `npm run rules` (the deploy workflow fails if you forget). To add a new
 field or section you change code, and the backend refuses it until you do.
 
-| Folder                 | What                                                                                             |
-| ---------------------- | ------------------------------------------------------------------------------------------------ |
-| `settings/site.json`   | Contact details, social links, attempt years (+ the developer-only `show_free_tests` switch)     |
-| `home/home.json`       | Hero (video, headline, search bar text, stat tiles), founder message, featured courses, CTA      |
-| `courses/*.json`       | Thumbnail, name, price (+ category and order set on add)                                         |
-| `teachers/*.json`      | Name, subject, credential, bio, photo, intro video                                               |
-| `results/*.json`       | Student, exam, year, rank, photo, "show on home"                                                 |
-| `reels/*.json`         | Instagram reel testimonials: link, student, rank label, cover picture                            |
-| `resources/*.json`     | Free resources (uploaded PDF **or** external link)                                               |
-| `exam-updates/*.json`  | Date, exam body, category, title, official link                                                  |
-| `landing-pages/*.json` | Campaign pages (`/lp/<slug>/`); only **published** ones are built                                |
-| `tests/*.json`         | Free tests (hidden until the developer sets `show_free_tests` to `true` in `settings/site.json`) |
+| Folder                 | What                                                                                                                          |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `settings/site.json`   | Contact details, social links, attempt years (+ the developer-only `show_free_tests` switch)                                  |
+| `home/home.json`       | Hero (video or poster, search bar text, stat tiles; hero text is saved but not shown), founder message, featured courses, CTA |
+| `courses/*.json`       | Thumbnail, name, price (+ category and order set on add)                                                                      |
+| `teachers/*.json`      | Name, subject, credential, bio, photo, intro video                                                                            |
+| `results/*.json`       | Student, exam, year, rank, photo, "show on home"                                                                              |
+| `reels/*.json`         | Instagram reel testimonials: link, student, rank label, cover picture                                                         |
+| `resources/*.json`     | Free resources (uploaded PDF **or** external link)                                                                            |
+| `exam-updates/*.json`  | Date, exam body, category, title, official link                                                                               |
+| `landing-pages/*.json` | Campaign pages (`/lp/<slug>/`); only **published** ones are built                                                             |
+| `tests/*.json`         | Free tests (hidden until the developer sets `show_free_tests` to `true` in `settings/site.json`)                              |
 
 Seed entries carry `"dummy": true` and show a **Sample** badge in the admin. Images live in `public/uploads/`.
 
@@ -128,14 +132,55 @@ at `/search/?q=...`.
 A swipeable row of 9:16 reel cards in the middle of the Home page (between Free Resources and Exam Updates) and on
 the Results page. Manage it in **Admin > Reels**: paste the reel's Instagram link, the student, a rank label and a cover picture.
 
-- Instagram offers no public thumbnails, so each reel has an uploaded **cover picture** (a screenshot works).
-- **Nothing from Instagram loads until a card is tapped** (no scripts, cookies or tracking, and no cost to page speed). A
-  tap opens a native dialog with Instagram's embed player in a sandboxed frame, plus an "Open on Instagram" link. Closing
-  it removes the frame, which stops playback.
+- **The cards show the real reel without a tap.** Each non-sample card embeds Instagram's own preview, scaled and
+  cropped to the card (a 9:16 reel fits exactly; a photo post is cropped to fill it). It is display-only: swiping scrolls
+  the carousel and a tap opens the player. The preview is a full Instagram embed (about 3 MB for the first one, less
+  for the rest), so it is **lazy**: nothing is requested until the carousel is within a screen of the viewport, then
+  only for cards that are (nearly) visible, and never on data-saver or 2G/3G connections, where the cover picture is
+  shown instead. Sample reels (marked **Sample**) are never previewed, because their placeholder codes would show
+  Instagram's "link may be broken" panel. See `src/components/ReelsCarousel.astro`.
+- A **cover picture** is still worth uploading (a screenshot works): it is what shows on data-saver connections and
+  while the preview loads. Instagram offers no public thumbnails, so it cannot be fetched automatically.
+- **Tapping a card** opens a native dialog with Instagram's player (with sound) in a sandboxed frame, plus an
+  "Open on Instagram" link. Closing it removes the frame, which stops playback.
 - Only the shortcode of the link is used (`src/lib/site.ts`, `instagramRef`); the embed address is rebuilt from it, so
   nothing else typed into the admin can reach a frame. Cards with an unusable link are not shown.
 - The Instagram account must be **public** and allow embedding. The seeded sample reels use placeholder codes, so
   their player shows Instagram's "link may be broken" notice until you replace them.
+
+## Live Instagram feed
+
+The Home page can show the institute's newest Instagram photos and reels as a swipeable row ("Latest from our Instagram",
+right after the topper reels). It is separate from the hand-picked **Reels** tab and appears only when an admin has
+connected an account and switched it on; otherwise the section is simply not on the page.
+
+**How it works**
+
+```
+Admin > Instagram ──paste token──► Apps Script (Script Properties: IG_TOKEN, never sent back to any browser)
+                                        │  GET graph.instagram.com/me/media   (cached 15 min, last good copy kept 6 h)
+Home page (idle) ──instagramFeed──►─────┘  returns only sanitised posts: picture URL, post link, 140-char caption, date
+```
+
+- **API:** "Instagram API with Instagram Login" (the replacement for the Basic Display API, which Meta shut down in
+  Dec 2024). The account must be a **Business or Creator** account. The admin pastes a long-lived access token made in
+  the Meta developer dashboard; the tab explains the steps in plain words.
+- **Renewal:** a long-lived token lasts 60 days. The backend renews it by itself (once it is 10 days old) while visitors
+  use the site, so nothing needs doing unless the site gets no visits for ~50 days. The admin tab shows the days left.
+- **Live, not rebuilt:** connecting, switching on/off, the heading and the number of posts (3-12) are stored in the
+  backend, so they apply at once. New Instagram posts show within about 15 minutes. No GitHub commit, no redeploy.
+- **Failure is quiet:** if Instagram is down the last good copy is served (up to 6 hours); with nothing cached the
+  section stays hidden. After a failed request the backend leaves Instagram alone for 2 minutes.
+- **Safety:** the token never leaves Apps Script and is never logged. The backend only passes on posts whose link is an
+  `instagram.com` post and whose picture is on Instagram's own CDN (`*.cdninstagram.com`, `*.fbcdn.net`), and the page
+  checks everything again; captions are inserted as plain text. Tapping a post opens the same sandboxed player as
+  the reels (`src/scripts/ig-player.ts`). The Content-Security-Policy allows those two picture hosts and nothing else new.
+- **Code:** `Code.gs` > "Instagram live feed", mirrored by `dev-server/server.mjs`; the page is
+  `src/components/InstagramFeed.astro`; the admin screen is `src/admin/tabs/InstagramTab.tsx`.
+- **Trying it without a Meta account:** in local development connect with the token `demo` (Admin > Instagram): the
+  dev backend then serves sample posts and never contacts Instagram.
+- **Not tested against live Instagram.** `npm run test:gs` and `npm run e2e` use a fake Instagram API, so the code is
+  checked but the real service is not. Do the check in [SETUP.md](google-apps-script/SETUP.md) step 8 on the real account.
 
 ## Mobile and performance
 
@@ -144,8 +189,10 @@ the Results page. Manage it in **Admin > Reels**: paste the reel's Instagram lin
   toppers and reels are swipe rows. They grow into the large vertical cards from 768px.
 - System font stacks (no web fonts), native `<dialog>` for the popup (a bottom sheet on phones), native `<details>`
   for FAQs and optional form fields, CSS scroll-snap carousel, one tiny filter script shared by four pages.
-- The hero poster paints first. The YouTube player is only fetched on desktop with a good connection, or when a
-  phone user presses Play.
+- The hero is the video and nothing else: a full-width 16:9 panel with no dark tint and no text or buttons on top
+  (the headline stays as a visually hidden `<h1>` for search engines and screen readers; the text fields remain in the
+  admin and are drawn only if you remove both the video and the poster). The poster paints first; the YouTube player is
+  only fetched on desktop with a good connection, or when a phone user presses Play.
 - Lighthouse (mobile, simulated 4G): Performance, Accessibility, Best Practices and SEO all 100 on Home and a
   landing page (measured before the responsive-picture work; re-run it after adding real photos).
 - Right-click and image dragging are disabled on the public site (`src/scripts/protect.ts`), except inside text fields so
@@ -166,6 +213,7 @@ the Results page. Manage it in **Admin > Reels**: paste the reel's Instagram lin
 | `npm run rules`                | Regenerate the backend's content lock from `src/admin/schemas.ts` (`-- --check` verifies) |
 | `npm run prune:uploads`        | List uploaded files no page uses (`-- --delete` removes them)                             |
 | `npm run placeholders`         | Regenerate the placeholder artwork in `public/uploads/placeholders`                       |
+| `npm run brand`                | Rebuild the logo, favicon, app icons and share image from `brand/ccs-logo.png`            |
 | `npm run check:layout`         | Load every page at 10 widths; fails on any horizontal overflow                            |
 | `npm run e2e`                  | Browser tests of forms, popup, search, admin, uploads and security cases                  |
 | `npm run test:gs`              | Runs the real `Code.gs` against in-memory fakes of Sheets/GitHub/Cache                    |
@@ -225,7 +273,9 @@ All admins can change content only, never layout or features.
 
 ## Before launch checklist
 
-- [ ] Replace `public/logo.svg`, `public/logo-light.svg`, `public/favicon.svg` and `public/og-default.png`.
+- [x] Logo, favicon and share image are in (made from `brand/ccs-logo.png` by `npm run brand`). To change the logo, replace
+      that file and run `npm run brand`; `brand/ccs-logo.svg` is the supplied vector trace, kept as an archive.
+- [ ] Optional: connect the institute's Instagram account in **Admin > Instagram** for the live feed on the Home page.
 - [ ] Replace the sample content (everything marked **Sample** in the admin): contact details, stats, founder
       message, teachers, results, hero video (the seeded video is only a placeholder).
 - [ ] Set up the backend with your own first admin ([SETUP.md](google-apps-script/SETUP.md)), and work through
@@ -239,6 +289,7 @@ All admins can change content only, never layout or features.
 
 ```
 astro.config.mjs        site/base from env, sitemap, Content-Security-Policy
+brand/                  the logo artwork (source of every logo/favicon file) and the share-card base
 src/pages/              public routes, /admin/, /lp/[slug]/, /search/, robots, build.json, search-index.json
 src/components/         Astro components (navbar, footer, cards, sections)
 src/islands/            Preact islands: enquiry form, popup, search, countdown, sign-up
@@ -247,7 +298,7 @@ src/lib/                site helpers (base path, safe links), API client, search
 src/content/            JSON content (edited via /admin)
 google-apps-script/     Code.gs, appsscript.json, SETUP.md  (production backend); content-lock.mjs, content-rules.json (the lock)
 dev-server/             local stand-in for the Apps Script backend
-scripts/                dev runner, QA scripts (layout, e2e, Code.gs and image tests), placeholders, hashing, lock generator
+scripts/                dev runner, QA scripts (layout, e2e, Code.gs and image tests), placeholders, brand files, hashing, lock generator
 scripts/lib/            responsive-picture build step and its recipe
 .github/workflows/      build + deploy to GitHub Pages
 ```

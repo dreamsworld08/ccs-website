@@ -28,7 +28,8 @@ export default defineConfig({
     csp: {
       directives: [
         "default-src 'self'",
-        "img-src 'self' data: https://i.ytimg.com",
+        // i.ytimg.com: video thumbnails. The Instagram hosts: pictures in the live Instagram feed.
+        "img-src 'self' data: https://i.ytimg.com https://*.cdninstagram.com https://*.fbcdn.net",
         "media-src 'self' https:",
         `connect-src ${connectSrc.join(' ')}`,
         'frame-src https://www.youtube-nocookie.com https://www.youtube.com https://www.instagram.com',

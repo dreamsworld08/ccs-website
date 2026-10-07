@@ -1,0 +1,312 @@
+---
+import Icon from './Icon.astro';
+import { BACKEND_CONFIGURED } from '../config/backend';
+---
+
+{BACKEND_CONFIGURED && (
+  <section
+    class="panel bg-white border border-line"
+    data-ig-root
+    hidden
+    aria-labelledby="ig-heading"
+  >
+    <div class="container-x section-pad">
+      <div class="mb-5 flex items-end justify-between gap-4 md:mb-10">
+        <div>
+          <span class="chip chip-kicker mb-4 md:mb-5">Instagram</span>
+          <h2 class="h2" id="ig-heading" data-ig-heading>
+            Latest from our Instagram
+          </h2>
+          <p class="mt-3 max-w-[520px] text-[15px] text-muted md:text-[17px]">
+            <span data-ig-handle hidden>
+              <a
+                class="font-medium text-ink underline-offset-4 hover:underline"
+                data-ig-profile
+                href="https://www.instagram.com/"
+                target="_blank"
+                rel="noopener noreferrer"
+              ></a>{' '}
+              &middot;{' '}
+            </span>
+            Tap a post to open it.
+          </p>
+        </div>
+        <div class="hidden gap-2 md:flex">
+          <button
+            type="button"
+            class="btn btn-white !h-12 !w-12 !p-0"
+            data-ig-prev
+            aria-label="Previous posts"
+          >
+            <Icon name="arrow-left" size={20} />
+          </button>
+          <button
+            type="button"
+            class="btn btn-dark !h-12 !w-12 !p-0"
+            data-ig-next
+            aria-label="Next posts"
+          >
+            <Icon name="arrow-right" size={20} />
+          </button>
+        </div>
+      </div>
+
+      <div
+        class="carousel -mx-5 px-5 md:mx-0 md:px-0"
+        data-ig-track
+        tabindex="0"
+        role="region"
+        aria-label="Latest Instagram posts"
+      />
+    </div>
+
+    <template data-ig-icon="instagram">
+      <Icon name="instagram" size={16} />
+    </template>
+    <template data-ig-icon="play">
+      <Icon name="play" size={16} />
+    </template>
+
+    <!-- One dialog for every post: the same safe player as the reels (see src/scripts/ig-player.ts). -->
+    <dialog id="ig-dialog" class="reel-dialog" aria-labelledby="ig-dialog-title">
+      <div class="flex items-center justify-between gap-3 px-4 py-3">
+        <p id="ig-dialog-title" data-reel-title class="h3 min-w-0 truncate !text-[18px]">
+          Instagram
+        </p>
+        <button
+          type="button"
+          class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/15 text-white hover:bg-white/25"
+          data-reel-close
+          aria-label="Close post"
+        >
+          <Icon name="x" size={20} />
+        </button>
+      </div>
+      <div class="reel-frame-wrap" data-reel-frame></div>
+      <div class="flex items-center justify-between gap-3 px-4 py-3 text-[13px] text-white/70">
+        <span>Shown from Instagram</span>
+        <a
+          data-reel-link
+          href="https://www.instagram.com/"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="btn btn-white btn-sm"
+        >
+          Open on Instagram <Icon name="arrow-up-right" size={15} />
+        </a>
+      </div>
+    </dialog>
+  </section>
+)}
+
+<script>
+  import { callBackend } from '../lib/api';
+  import { setupPlayer } from '../scripts/ig-player';
+
+  // The section stays hidden unless the admin connected Instagram AND switched the feed on, and the
+  // backend returned at least one usable post. Nothing is requested until the page is idle.
+  type Post = Partial<{
+    kind: string;
+    code: string;
+    video: boolean;
+    image: string;
+    caption: string;
+    ts: string;
+  }>;
+  type Feed = Partial<{
+    enabled: boolean;
+    heading: string;
+    username: string;
+    profile_url: string;
+    posts: Post[];
+  }>;
+
+  const root = document.querySelector<HTMLElement>('[data-ig-root]');
+  const dialog = document.getElementById('ig-dialog') as HTMLDialogElement | null;
+  if (root && dialog) {
+    const track = root.querySelector<HTMLElement>('[data-ig-track]')!;
+    const base = (document.documentElement.dataset.base ?? '').replace(/\/$/, '');
+    const openPlayer = setupPlayer(dialog);
+
+    const step = () =>
+      (track.firstElementChild as HTMLElement | null)?.getBoundingClientRect().width ?? 230;
+    root
+      .querySelector('[data-ig-prev]')
+      ?.addEventListener('click', () =>
+        track.scrollBy({ left: -(step() + 16) * 2, behavior: 'smooth' }),
+      );
+    root
+      .querySelector('[data-ig-next]')
+      ?.addEventListener('click', () =>
+        track.scrollBy({ left: (step() + 16) * 2, behavior: 'smooth' }),
+      );
+
+    // Whatever the backend sends is checked again here: only Instagram's own picture hosts (or, in local
+    // development, the site's own sample pictures) and well-formed post codes are ever used.
+    const CDN = /^https:\/\/[a-z0-9.-]+\.(cdninstagram\.com|fbcdn\.net)\//i;
+    const LOCAL = /^\/uploads\/[\w./-]+$/;
+    const clean = (p: Post): Required<Post> | null =>
+      typeof p.kind === 'string' &&
+      /^(reel|p|tv)$/.test(p.kind) &&
+      typeof p.code === 'string' &&
+      /^[\w-]{5,20}$/.test(p.code) &&
+      typeof p.image === 'string' &&
+      (CDN.test(p.image) || LOCAL.test(p.image))
+        ? {
+            kind: p.kind,
+            code: p.code,
+            image: p.image,
+            video: p.video === true,
+            caption: typeof p.caption === 'string' ? p.caption.slice(0, 140) : '',
+            ts: typeof p.ts === 'string' ? p.ts : '',
+          }
+        : null;
+
+    const ago = (ts: string) => {
+      const t = Date.parse(ts.replace(/([+-]\d{2})(\d{2})$/, '$1:$2'));
+      if (Number.isNaN(t)) return '';
+      const days = Math.floor((Date.now() - t) / 86_400_000);
+      if (days < 1) return 'Today';
+      if (days === 1) return 'Yesterday';
+      if (days < 7) return `${days} days ago`;
+      if (days < 30) return `${Math.floor(days / 7)} week${days >= 14 ? 's' : ''} ago`;
+      return new Date(t).toLocaleDateString('en-IN', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      });
+    };
+
+    const icon = (name: string) => {
+      const tpl = root.querySelector<HTMLTemplateElement>(`template[data-ig-icon="${name}"]`);
+      return tpl?.content.firstElementChild?.cloneNode(true) as Element | undefined;
+    };
+
+    function card(p: Required<Post>, username: string) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className =
+        'group relative block aspect-[4/5] w-[168px] overflow-hidden rounded-[18px] bg-ink text-left text-white md:w-[230px] md:rounded-[24px]';
+      b.dataset.igCard = '';
+      b.dataset.kind = p.kind;
+      b.dataset.code = p.code;
+      b.dataset.caption = p.caption;
+      b.dataset.username = username;
+      b.setAttribute(
+        'aria-label',
+        p.caption
+          ? `${p.video ? 'Watch' : 'View'}: ${p.caption.slice(0, 80)}`
+          : 'Open Instagram post',
+      );
+
+      const img = new Image();
+      img.src = LOCAL.test(p.image) ? `${base}${p.image}` : p.image;
+      img.alt = '';
+      img.loading = 'lazy';
+      img.decoding = 'async';
+      img.referrerPolicy = 'no-referrer';
+      img.className =
+        'absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]';
+
+      const shade = document.createElement('span');
+      shade.className =
+        'absolute inset-0 bg-[linear-gradient(to_top,rgb(26_27_31/0.85)_0%,rgb(26_27_31/0.1)_45%,transparent_65%)]';
+
+      const badge = document.createElement('span');
+      badge.className =
+        'absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-ink md:right-3 md:top-3';
+      badge.setAttribute('aria-hidden', 'true');
+      const glyph = icon(p.video ? 'play' : 'instagram');
+      if (glyph) badge.append(glyph);
+
+      const text = document.createElement('span');
+      text.className = 'absolute inset-x-0 bottom-0 p-3 md:p-4';
+      if (p.caption) {
+        const cap = document.createElement('span');
+        cap.className = 'line-clamp-2 block text-[12.5px] leading-snug md:text-[14px]';
+        cap.textContent = p.caption;
+        text.append(cap);
+      }
+      const when = ago(p.ts);
+      if (when) {
+        const time = document.createElement('span');
+        time.className = 'mono mt-1.5 block text-[10.5px] uppercase tracking-wide text-white/75';
+        time.textContent = when;
+        text.append(time);
+      }
+
+      b.append(img, shade, badge, text);
+      return b;
+    }
+
+    function show(feed: Feed) {
+      const posts = (Array.isArray(feed.posts) ? feed.posts : [])
+        .map((p) => (p && typeof p === 'object' ? clean(p) : null))
+        .filter((p): p is Required<Post> => p !== null);
+      if (!feed.enabled || posts.length === 0) {
+        root!.hidden = true;
+        return;
+      }
+      const username = /^[A-Za-z0-9_.]{1,30}$/.test(feed.username ?? '') ? feed.username! : '';
+      const heading = root!.querySelector('[data-ig-heading]');
+      if (heading && feed.heading) heading.textContent = feed.heading;
+
+      const profile = root!.querySelector<HTMLAnchorElement>('[data-ig-profile]');
+      const handle = root!.querySelector<HTMLElement>('[data-ig-handle]');
+      const profileOk =
+        username !== '' &&
+        /^https:\/\/www\.instagram\.com\/[A-Za-z0-9_.]+\/$/.test(feed.profile_url ?? '');
+      if (profile && handle) {
+        handle.hidden = !profileOk;
+        if (profileOk) {
+          profile.href = feed.profile_url!;
+          profile.textContent = `@${username}`;
+        }
+      }
+      track.replaceChildren(...posts.map((p) => card(p, username)));
+      root!.hidden = false;
+    }
+
+    track.addEventListener('click', (e) => {
+      const el = (e.target as Element).closest<HTMLElement>('[data-ig-card]');
+      if (!el) return;
+      const who = el.dataset.username ? `@${el.dataset.username}` : 'Instagram';
+      openPlayer(
+        el.dataset.kind ?? 'p',
+        el.dataset.code ?? '',
+        who,
+        el.dataset.caption
+          ? `Instagram post: ${el.dataset.caption.slice(0, 80)}`
+          : 'Instagram post',
+      );
+    });
+
+    // A visitor who opens several pages gets the feed from the browser, not from the backend every time.
+    const KEY = 'ccs_ig_feed';
+    const FRESH_MS = 5 * 60 * 1000;
+    const cached = (): { t: number; feed: Feed } | null => {
+      try {
+        return JSON.parse(sessionStorage.getItem(KEY) || 'null');
+      } catch {
+        return null;
+      }
+    };
+    async function load() {
+      const hit = cached();
+      if (hit && Date.now() - hit.t < FRESH_MS) return show(hit.feed);
+      const res = await callBackend<Feed>('instagramFeed', {}, 15000);
+      if (res.ok) {
+        try {
+          sessionStorage.setItem(KEY, JSON.stringify({ t: Date.now(), feed: res }));
+        } catch {
+          /* storage full or blocked: fine */
+        }
+        show(res);
+      } else if (hit) show(hit.feed);
+    }
+    const idle = (window as unknown as { requestIdleCallback?: (f: () => void) => void })
+      .requestIdleCallback;
+    if (idle) idle(() => void load());
+    else setTimeout(() => void load(), 1200);
+  }
+</script>

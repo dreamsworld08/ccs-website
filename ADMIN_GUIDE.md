@@ -16,7 +16,7 @@ break the design.
 
 ## The tabs
 
-Enquiries · Home Page · Courses · Results · Teachers · Free Resources · Exam Updates · Landing Pages · Settings
+Enquiries · Home Page · Courses · Results · Reels · Instagram · Teachers · Free Resources · Exam Updates · Landing Pages · Settings
 
 ---
 
@@ -70,7 +70,32 @@ The **Reels** tab controls the swipeable reel carousel in the middle of the Home
    card shows a coloured background.
 4. **Save.** Use the **↑ ↓** buttons to change the order, or untick **Published** to hide a reel.
 
-Visitors tap a card to watch the reel; it plays from Instagram and nothing is loaded from Instagram until they do.
+Visitors see a silent preview of each real reel right on its card as soon as they scroll to the carousel, and tap a card to
+watch it with sound. The preview needs the **real Instagram link** (cards marked **Sample** show the cover picture
+only). It is not shown on data-saver or slow connections, so still upload a **cover picture**: that is what those visitors
+see. If a card shows an Instagram "link may be broken" notice, the link is wrong or the account is private.
+
+## Show your latest Instagram posts on the Home page
+
+The **Instagram** tab connects the institute's Instagram account so the Home page shows its newest photos and reels
+automatically. You do nothing after the one-time set-up: when you post on Instagram, the post appears on the website
+within about 15 minutes. (This is separate from the **Reels** tab, which is a hand-picked row of topper testimonials.)
+
+**One-time set-up** (about 10 minutes, ask your web developer if you are unsure):
+
+1. The Instagram account must be a **Professional** account (Business or Creator). In the Instagram app: Settings, Account
+   type and tools, Switch to professional account. A personal account cannot be connected.
+2. Create an access token for it on **developers.facebook.com** (the tab lists the steps). It is a long piece of text.
+3. **Instagram tab > paste the token > Connect.** The tab shows the account name and a preview of the posts.
+
+**Day to day:** the tab lets you switch the feed on or off, change the section heading, choose how many posts to show
+(3 to 12), press **Refresh now** to reload immediately, **Replace access token**, or **Disconnect**. These changes are live
+straight away: there is no 2-minute wait. Visitors tap a post to see it (reels play with sound) without leaving the site.
+
+- The connection renews itself while the website is being visited. The tab shows how many days it is good for; if it
+  says the connection has a problem or is close to expiring and stays that way, replace the access token.
+- If Instagram is unreachable for a while, visitors keep seeing the last posts that were loaded. Nothing breaks.
+- Nobody, including admins, can ever read the token back: it is kept only on the server.
 
 ## Pictures
 
@@ -111,9 +136,9 @@ developer clears unused files, so do not upload anything that must never be publ
 ## Change the Home page video (and other Home content)
 
 1. **Home Page.** The layout is fixed; only text, pictures and the video can be changed.
-2. The top of the Home page (the **hero**) plays your video behind the headline. Under **Hero**, paste a
+2. The top of the Home page (the **hero**) shows your video, full width and clear, with nothing written on top of it. Under **Hero**, paste a
    **YouTube link** in **Video link**. A preview appears so you can check it.
-3. Set the **Welcome line** (small text above the headline), the **Headline**, sub-text and the two buttons.
+3. The **Welcome line**, **Headline**, sub-text and two buttons are kept, but they are not shown while a video or poster is set (they appear only if you remove both). Please still fill in the **Headline**: search engines read it.
 4. The **search bar** sits at the bottom of the hero. Change its **hint text** and the **Popular searches**
    (up to 6 quick-tap words shown when someone clicks the bar). Visitors can search free resources, exam updates
    and results there. You do not need to do anything to keep it up to date: it finds whatever you publish.

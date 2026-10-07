@@ -99,6 +99,7 @@ export default function HomeTab() {
           {HOME_SECTIONS.map((section) => (
             <fieldset class="section" key={section.title}>
               <legend>{section.title}</legend>
+              {section.note && <p class="help">{section.note}</p>}
               {section.fields.map((f) => (
                 <FieldInput
                   field={f}

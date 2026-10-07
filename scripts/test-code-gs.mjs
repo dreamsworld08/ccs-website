@@ -180,6 +180,12 @@ globalThis.PropertiesService = {
   getScriptProperties: () => ({
     getProperty: (k) => props[k] ?? null,
     deleteProperty: (k) => void delete props[k],
+    setProperty: (k, v) => void (props[k] = String(v)),
+    setProperties: (o) =>
+      void Object.assign(
+        props,
+        Object.fromEntries(Object.entries(o).map(([k, v]) => [k, String(v)])),
+      ),
   }),
 };
 const cacheStore = new Map();
@@ -271,7 +277,29 @@ function github(url, params = {}) {
   }
   return resp(405, {});
 }
-globalThis.UrlFetchApp = { fetch: github, fetchAll: (reqs) => reqs.map((r) => github(r.url, r)) };
+/* Fake Instagram API (graph.instagram.com): one valid token, a fixed set of media, switchable failures */
+const ig = { token: 'IGAAvalidtoken0123456789abcdef', media: [], down: false, calls: [] };
+function instagram(url) {
+  const u = new URL(url);
+  ig.calls.push(u.pathname);
+  if (ig.down) throw new Error(`DNS error for ${url}`); // UrlFetchApp throws when it cannot connect
+  if (u.searchParams.get('access_token') !== ig.token)
+    return resp(400, { error: { message: 'Invalid OAuth access token.', code: 190 } });
+  if (u.pathname === '/me')
+    return resp(200, { user_id: '1784', username: 'ccs_chandigarh', account_type: 'BUSINESS' });
+  if (u.pathname === '/me/media') return resp(200, { data: ig.media });
+  if (u.pathname === '/refresh_access_token') {
+    ig.token = 'IGAArenewedtoken0123456789abcdef';
+    return resp(200, { access_token: ig.token, token_type: 'bearer', expires_in: 5184000 });
+  }
+  return resp(404, {});
+}
+const route = (url, params) =>
+  url.startsWith('https://graph.instagram.com/') ? instagram(url) : github(url, params);
+globalThis.UrlFetchApp = {
+  fetch: route,
+  fetchAll: (reqs) => reqs.map((r) => route(r.url, r)),
+};
 
 /* ------------------------------------------------------------------ load the real script */
 const code = readFileSync(new URL('../google-apps-script/Code.gs', import.meta.url), 'utf8');
@@ -1032,6 +1060,257 @@ check(
 );
 check(!call({ action: 'nope', token: T }).ok, 'unknown action rejected');
 check(JSON.parse(doGet().text).ok, 'doGet health check');
+
+console.log('\nInstagram live feed');
+{
+  const CDN = 'https://scontent-del1-1.cdninstagram.com/v/t51/abc.jpg?sig=1';
+  const post = (n, extra = {}) => ({
+    id: String(n),
+    media_type: 'IMAGE',
+    media_url: CDN,
+    permalink: `https://www.instagram.com/p/AbCdEfG${n}/`,
+    caption: `Caption ${n}`,
+    timestamp: '2026-10-01T10:00:00+0000',
+    ...extra,
+  });
+  ig.media = [
+    post(1),
+    post(2, {
+      media_type: 'VIDEO',
+      media_url: 'https://scontent.cdninstagram.com/v.mp4',
+      thumbnail_url: CDN,
+      permalink: 'https://www.instagram.com/reel/ReelCode22/',
+    }),
+    post(3, { media_type: 'CAROUSEL_ALBUM' }),
+    post(4, { caption: `Line one\nline two\u0007 ${'x'.repeat(300)}` }),
+    post(5, { permalink: 'javascript:alert(1)' }), // not an Instagram link: dropped
+    post(6, { media_url: 'https://evil.example.com/a.jpg' }), // not Instagram's CDN: dropped
+    post(7, { media_type: 'VIDEO', media_url: CDN, thumbnail_url: '' }), // a video with no cover: dropped
+    post(8, { permalink: 'https://www.instagram.com/p/Ab/' }), // code too short: dropped
+    post(9),
+    post(10),
+  ];
+  const publicFeed = () => call({ action: 'instagramFeed' });
+  const admin = (action, extra = {}) => call({ action, token: T, ...extra });
+  const everything = []; // every response, to prove the token never leaves the backend
+  const seen = (r) => (everything.push(JSON.stringify(r)), r);
+
+  const none = publicFeed();
+  check(
+    none.ok && none.enabled === false && none.posts.length === 0,
+    'before anything is connected the public feed is simply empty',
+  );
+  check(
+    ig.calls.length === 0,
+    'visitors never trigger an Instagram request when nothing is connected',
+  );
+  for (const a of [
+    'getInstagram',
+    'connectInstagram',
+    'saveInstagramSettings',
+    'refreshInstagram',
+    'disconnectInstagram',
+  ])
+    check(call({ action: a }).code === 'auth', `${a} needs an admin session`);
+  check(
+    admin('getInstagram').connected === false,
+    'the admin tab starts in the "not connected" state',
+  );
+
+  check(
+    !admin('connectInstagram', { access_token: 'short' }).ok && ig.calls.length === 0,
+    'something that is not a token is refused without calling Instagram',
+  );
+  const wrong = seen(
+    admin('connectInstagram', { access_token: 'IGAAwrongtoken0123456789abcdefgh' }),
+  );
+  check(
+    !wrong.ok && /no longer accepts/.test(wrong.error) && !props.IG_TOKEN,
+    'a token Instagram rejects gives a plain-English error and is not stored',
+    JSON.stringify(wrong),
+  );
+
+  const linked = seen(admin('connectInstagram', { access_token: ` ${ig.token}\n` }));
+  check(
+    linked.ok &&
+      linked.connected &&
+      linked.username === 'ccs_chandigarh' &&
+      linked.account_type === 'BUSINESS',
+    'a valid token connects the account (spaces and line breaks from pasting are ignored)',
+    JSON.stringify(linked),
+  );
+  check(props.IG_TOKEN === ig.token, 'the token is kept in Script Properties');
+  check(
+    linked.enabled === true,
+    'the feed is switched on by default the first time an account is connected',
+  );
+  check(
+    linked.days_left >= 59 && linked.expiry_estimated === true,
+    'the status shows about 60 days left, marked as an estimate until the first renewal',
+    JSON.stringify(linked),
+  );
+
+  const feed = seen(publicFeed());
+  check(
+    feed.ok &&
+      feed.enabled &&
+      feed.username === 'ccs_chandigarh' &&
+      feed.profile_url === 'https://www.instagram.com/ccs_chandigarh/',
+    'the public feed names the account and links to its profile',
+    JSON.stringify(feed),
+  );
+  check(
+    feed.posts.length === 6 &&
+      feed.posts.map((x) => x.code).join() ===
+        'AbCdEfG1,ReelCode22,AbCdEfG3,AbCdEfG4,AbCdEfG9,AbCdEfG10',
+    'only well-formed posts with an Instagram link and picture survive',
+    feed.posts.map((x) => x.code).join(),
+  );
+  check(
+    feed.posts[1].kind === 'reel' && feed.posts[1].video === true && feed.posts[1].image === CDN,
+    'a reel uses its cover picture and is flagged as a video',
+  );
+  check(
+    // eslint-disable-next-line no-control-regex -- the point is that control characters are gone
+    feed.posts[3].caption.length <= 140 && !/[\n\u0007]/.test(feed.posts[3].caption),
+    'captions are cut to 140 characters with no line breaks or control characters',
+  );
+  check(
+    feed.posts.every((x) => Object.keys(x).sort().join() === 'caption,code,image,kind,ts,video'),
+    'each post carries only the fields the page needs',
+  );
+
+  ig.calls.length = 0;
+  publicFeed();
+  publicFeed();
+  check(
+    ig.calls.length === 0,
+    'repeat visits within 15 minutes are served from the cache (no Instagram request)',
+  );
+
+  const few = seen(
+    admin('saveInstagramSettings', { enabled: 'true', count: 3, heading: '  Follow\nus  ' }),
+  );
+  check(
+    few.ok && few.count === 3 && few.heading === 'Follow us',
+    'settings save, with the heading tidied',
+    JSON.stringify(few),
+  );
+  check(
+    publicFeed().posts.length === 3 && publicFeed().heading === 'Follow us',
+    'a changed count and heading apply at once, without waiting for the cache',
+  );
+  for (const bad of [2, 13, 'many', 4.5])
+    check(
+      !admin('saveInstagramSettings', { enabled: 'true', count: bad, heading: 'x' }).ok,
+      `${bad} posts is refused`,
+    );
+  check(
+    admin('saveInstagramSettings', { enabled: 'true', count: 6, heading: ''.padEnd(5, ' ') })
+      .heading === 'Latest from our Instagram',
+    'an empty heading falls back to the default',
+  );
+  admin('saveInstagramSettings', { enabled: 'false', count: 6, heading: 'Hidden' });
+  const off = seen(publicFeed());
+  check(
+    off.enabled === false && off.posts.length === 0 && !('username' in off),
+    'switched off: the public feed is empty again',
+  );
+  admin('saveInstagramSettings', { enabled: 'true', count: 6, heading: 'Latest' });
+
+  // --- trouble with Instagram
+  cacheStore.delete('ig:fresh');
+  ig.down = true;
+  const warnings = [];
+  const realWarn = console.warn;
+  console.warn = (...a) => warnings.push(a.join(' '));
+  ig.calls.length = 0;
+  const stale = seen(publicFeed());
+  console.warn = realWarn;
+  check(
+    stale.ok && stale.posts.length === 6,
+    'if Instagram is unreachable the last good copy is shown (visitors see no error)',
+  );
+  check(
+    !warnings.join('\n').includes(ig.token),
+    'the log never contains the access token (it travels in the request URL)',
+    warnings.join('|'),
+  );
+  check(
+    /Could not reach/.test(admin('getInstagram').last_error),
+    'the admin tab shows what went wrong',
+  );
+  const callsAfterFailure = ig.calls.length;
+  publicFeed();
+  publicFeed();
+  check(
+    ig.calls.length === callsAfterFailure,
+    'after a failure Instagram is not hammered: it is left alone for a couple of minutes',
+  );
+  ig.down = false;
+  cacheStore.delete('ig:backoff');
+  cacheStore.delete('ig:fresh');
+  check(
+    publicFeed().posts.length === 6 && admin('getInstagram').last_error === '',
+    'it recovers by itself when Instagram is back',
+  );
+
+  cacheStore.delete('ig:posts');
+  cacheStore.delete('ig:fresh');
+  ig.down = true;
+  console.warn = () => {};
+  const empty = publicFeed();
+  console.warn = realWarn;
+  check(
+    empty.posts.length === 0,
+    'with no copy at all and Instagram down, the feed is empty rather than an error',
+  );
+  ig.down = false;
+  cacheStore.delete('ig:backoff');
+
+  // --- the connection renews itself
+  ig.calls.length = 0;
+  props.IG_REFRESHED = String(Date.now() - 11 * 24 * 3600 * 1000);
+  cacheStore.delete('ig:fresh');
+  publicFeed();
+  check(
+    ig.calls.includes('/refresh_access_token') &&
+      props.IG_TOKEN === ig.token &&
+      props.IG_EXPIRES_EXACT === 'true',
+    'a token older than 10 days is renewed quietly while visitors use the site',
+    ig.calls.join(),
+  );
+  check(
+    admin('getInstagram').expiry_estimated === false,
+    'after a renewal the expiry date is exact',
+  );
+  ig.calls.length = 0;
+  cacheStore.delete('ig:fresh');
+  publicFeed();
+  check(!ig.calls.includes('/refresh_access_token'), 'a fresh token is not renewed again');
+
+  ig.calls.length = 0;
+  const forced = seen(admin('refreshInstagram'));
+  check(
+    forced.ok && ig.calls.includes('/me/media') && forced.posts.length === 6,
+    '"Refresh now" reloads from Instagram straight away',
+  );
+
+  const gone = seen(admin('disconnectInstagram'));
+  check(
+    gone.ok &&
+      !props.IG_TOKEN &&
+      !props.IG_USERNAME &&
+      !props.IG_EXPIRES &&
+      admin('getInstagram').connected === false,
+    'disconnecting forgets the token and the account',
+  );
+  check(
+    publicFeed().posts.length === 0 && !cacheStore.has('ig:posts'),
+    'and clears the cached posts',
+  );
+  check(!everything.some((r) => r.includes('IGAA')), 'no response ever contained an access token');
+}
 
 console.log(`\n${fail ? 'FAILED' : 'PASSED'}: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

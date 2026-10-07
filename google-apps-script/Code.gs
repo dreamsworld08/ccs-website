@@ -8,10 +8,12 @@
  * This file implements exactly the same API as dev-server/server.mjs (the local stand-in),
  * so the website and /admin behave identically in development and production.
  *
- * Public actions : submitEnquiry, login
+ * Public actions : submitEnquiry, login, instagramFeed
  * Admin actions  : listEnquiries, updateEnquiry, listContent, getContent, saveContent,
  *                  deleteContent, uploadFile, changePassword, listAdmins, addAdmin,
- *                  setAdminActive, resetAdminPassword      (all need a valid session token)
+ *                  setAdminActive, resetAdminPassword,
+ *                  getInstagram, connectInstagram, saveInstagramSettings, refreshInstagram,
+ *                  disconnectInstagram                     (all need a valid session token)
  *
  * Secrets live ONLY in Project Settings > Script Properties (never in this file, never in the repo):
  *   GITHUB_TOKEN          fine-grained token for this repo, Contents: read/write
@@ -21,6 +23,8 @@
  *   FIRST_ADMIN_PASSWORD  } the password property. There is no default login in the code.
  *   SHEET_ID              optional: id of the enquiries sheet, when this script is NOT bound to it
  *                         (a script owned by the developer, so the institute's account never holds the secrets)
+ *   IG_*                  written by the admin's Instagram tab (access token, account name, display settings).
+ *                         Never set by hand and never sent back to the browser: see "Instagram live feed" below.
  */
 
 /* ============================== CONFIG (edit here) ============================== */
@@ -74,6 +78,7 @@ function route_(p) {
   var action = String(p.action || '');
   if (action === 'submitEnquiry') return submitEnquiry_(p);
   if (action === 'login') return login_(p);
+  if (action === 'instagramFeed') return instagramFeed_();
 
   var me = authenticate_(p.token);
   if (!me) return { ok: false, code: 'auth', error: 'Session expired. Please log in again.' };
@@ -93,6 +98,11 @@ function route_(p) {
     case 'addAdmin': return addAdmin_(p);
     case 'setAdminActive': return setAdminActive_(p);
     case 'resetAdminPassword': return resetAdminPassword_(p);
+    case 'getInstagram': return getInstagram_();
+    case 'connectInstagram': return connectInstagram_(p);
+    case 'saveInstagramSettings': return saveInstagramSettings_(p);
+    case 'refreshInstagram': return refreshInstagram_();
+    case 'disconnectInstagram': return disconnectInstagram_();
     default: return { ok: false, error: 'Unknown action.' };
   }
 }
@@ -692,6 +702,237 @@ function uploadFile_(p, me) {
   }));
   if (res.getResponseCode() !== 201 && res.getResponseCode() !== 200) return { ok: false, error: 'Could not upload to GitHub (error ' + res.getResponseCode() + ').' };
   return { ok: true, path: '/uploads/' + folder + '/' + name };
+}
+
+/* ============================== Instagram live feed ============================== */
+// The Home page can show the institute's latest Instagram posts. An admin pastes a long-lived access token
+// into /admin > Instagram ("Instagram API with Instagram Login": the account must be a Business or Creator
+// account). The token is kept in Script Properties ONLY: it is never returned to the browser, never written
+// to the repo, and never logged. The public action instagramFeed returns just the sanitised posts, cached
+// so that visitors never wait for Instagram and the quota is never an issue.
+var IG = {
+  API: 'https://graph.instagram.com',
+  FIELDS: 'id,caption,media_type,media_url,thumbnail_url,permalink,timestamp',
+  FETCH_LIMIT: 12,                          // posts asked for from Instagram (the admin picks how many to show)
+  FRESH_SECONDS: 15 * 60,                   // new posts reach the site within 15 minutes
+  RETRY_SECONDS: 2 * 60,                    // after a failed fetch, wait before asking again
+  STALE_SECONDS: 6 * 60 * 60,               // last good copy, served if Instagram is unreachable
+  TOKEN_LIFE_MS: 60 * 24 * 60 * 60 * 1000,  // a long-lived token lasts 60 days, and each renewal restarts that
+  RENEW_AFTER_MS: 10 * 24 * 60 * 60 * 1000, // renew a token once it is 10 days old (Instagram needs it >= 1 day old)
+  RENEW_RETRY_MS: 12 * 60 * 60 * 1000,
+  MIN_COUNT: 3,
+  MAX_COUNT: 12,
+  DEFAULT_HEADING: 'Latest from our Instagram'
+};
+
+/** GET to the Instagram API. Returns { code, body }; code 0 = could not connect. The URL (it holds the token) is never logged. */
+function igCall_(path, params) {
+  var query = Object.keys(params).map(function (k) {
+    return encodeURIComponent(k) + '=' + encodeURIComponent(params[k]);
+  }).join('&');
+  var res;
+  try {
+    res = UrlFetchApp.fetch(IG.API + path + '?' + query, { method: 'get', muteHttpExceptions: true });
+  } catch (e) {
+    console.warn('Instagram request failed to connect.');
+    return { code: 0, body: null };
+  }
+  var body = null;
+  try { body = JSON.parse(res.getContentText()); } catch (e) { /* not JSON */ }
+  return { code: res.getResponseCode(), body: body };
+}
+
+/** A sentence the admin can act on, from an Instagram error response. */
+function igError_(r) {
+  if (r.code === 0) return 'Could not reach Instagram. Please try again in a minute.';
+  var err = r.body && r.body.error;
+  if (err && (Number(err.code) === 190 || /token/i.test(String(err.message || '')))) {
+    return 'Instagram no longer accepts this access token (it expired or was revoked). Generate a new token and connect again.';
+  }
+  if (err && err.message) return 'Instagram said: ' + clip_(err.message, 160);
+  return 'Instagram returned an unexpected answer (HTTP ' + r.code + ').';
+}
+
+/** Keeps only what the Home page needs, and only values it can safely use. Anything unexpected drops the post. */
+function igCleanPosts_(data) {
+  var posts = [];
+  (Array.isArray(data) ? data : []).forEach(function (m) {
+    if (!m || typeof m !== 'object') return;
+    var ref = String(m.permalink || '').match(/^https:\/\/www\.instagram\.com\/(?:[A-Za-z0-9_.]+\/)?(reel|p|tv)\/([A-Za-z0-9_-]{5,20})\/?(?:[?#].*)?$/);
+    var video = m.media_type === 'VIDEO';
+    var image = String(video ? m.thumbnail_url || '' : m.media_url || '');
+    if (!ref || image.length > 1000 || !/^https:\/\/[a-z0-9.-]+\.(cdninstagram\.com|fbcdn\.net)\//i.test(image)) return;
+    posts.push({ kind: ref[1], code: ref[2], video: video, image: image, caption: clip_(m.caption, 140), ts: clip_(m.timestamp, 30) });
+  });
+  return posts;
+}
+
+/** Asks Instagram for a longer-lived copy of the token. Returns { ok } or { ok: false, error }. */
+function igRenew_() {
+  var token = props_().getProperty('IG_TOKEN');
+  if (!token) return { ok: false, error: 'Instagram is not connected.' };
+  var r = igCall_('/refresh_access_token', { grant_type: 'ig_refresh_token', access_token: token });
+  if (r.code === 200 && r.body && r.body.access_token) {
+    var now = Date.now();
+    props_().setProperties({
+      IG_TOKEN: String(r.body.access_token),
+      IG_REFRESHED: String(now),
+      IG_EXPIRES: String(now + (Number(r.body.expires_in) > 0 ? Number(r.body.expires_in) * 1000 : IG.TOKEN_LIFE_MS)),
+      IG_EXPIRES_EXACT: 'true'
+    });
+    return { ok: true };
+  }
+  return { ok: false, error: igError_(r) };
+}
+
+/** Renews quietly while visitors use the site, so a connected account never needs attention. */
+function igRenewIfDue_() {
+  var now = Date.now();
+  var refreshed = Number(props_().getProperty('IG_REFRESHED') || 0);
+  var tried = Number(props_().getProperty('IG_RENEW_TRIED') || 0);
+  if (now - refreshed < IG.RENEW_AFTER_MS || now - tried < IG.RENEW_RETRY_MS) return;
+  props_().setProperty('IG_RENEW_TRIED', String(now));
+  igRenew_();
+}
+
+/** The cleaned posts, from cache when possible. { posts, error?, stale? } */
+function igFeed_(force) {
+  var cache = CacheService.getScriptCache();
+  var cached = cache.get('ig:posts');
+  if (!props_().getProperty('IG_TOKEN')) return { posts: [], error: 'Instagram is not connected.' };
+  // "fresh" is only trusted together with the copy it vouches for: the cache may drop an entry early.
+  if (!force && cached && cache.get('ig:fresh')) return { posts: JSON.parse(cached) };
+  if (!force && cache.get('ig:backoff')) {
+    return { posts: cached ? JSON.parse(cached) : [], error: props_().getProperty('IG_LAST_ERROR') || '', stale: Boolean(cached) };
+  }
+
+  igRenewIfDue_();
+  var r = igCall_('/me/media', { fields: IG.FIELDS, limit: IG.FETCH_LIMIT, access_token: props_().getProperty('IG_TOKEN') });
+  if (r.code === 200 && r.body && Array.isArray(r.body.data)) {
+    var posts = igCleanPosts_(r.body.data);
+    cache.put('ig:posts', JSON.stringify(posts), IG.STALE_SECONDS);
+    cache.put('ig:fresh', '1', IG.FRESH_SECONDS);
+    cache.remove('ig:backoff');
+    props_().setProperty('IG_LAST_OK', String(Date.now()));
+    props_().deleteProperty('IG_LAST_ERROR');
+    return { posts: posts };
+  }
+  var error = igError_(r);
+  props_().setProperty('IG_LAST_ERROR', error);
+  cache.put('ig:backoff', '1', IG.RETRY_SECONDS); // do not hammer Instagram while it is failing
+  return { posts: cached ? JSON.parse(cached) : [], error: error, stale: Boolean(cached) };
+}
+
+function igSettings_() {
+  var count = Number(props_().getProperty('IG_COUNT'));
+  return {
+    enabled: props_().getProperty('IG_ENABLED') === 'true',
+    count: count >= IG.MIN_COUNT && count <= IG.MAX_COUNT ? Math.floor(count) : 8,
+    heading: props_().getProperty('IG_HEADING') || IG.DEFAULT_HEADING
+  };
+}
+
+/** PUBLIC. What the Home page shows: nothing at all unless the admin connected and enabled the feed. */
+function instagramFeed_() {
+  var s = igSettings_();
+  var username = props_().getProperty('IG_USERNAME') || '';
+  if (!s.enabled || !props_().getProperty('IG_TOKEN')) return { ok: true, enabled: false, posts: [] };
+  var feed = igFeed_(false);
+  return {
+    ok: true,
+    enabled: true,
+    heading: s.heading,
+    username: username,
+    profile_url: username ? 'https://www.instagram.com/' + username + '/' : '',
+    posts: feed.posts.slice(0, s.count)
+  };
+}
+
+/** ADMIN. Everything the Instagram tab shows. The token itself is never included. */
+function igStatus_() {
+  var token = props_().getProperty('IG_TOKEN');
+  var expires = Number(props_().getProperty('IG_EXPIRES') || 0);
+  var lastOk = Number(props_().getProperty('IG_LAST_OK') || 0);
+  var s = igSettings_();
+  return {
+    ok: true,
+    connected: Boolean(token),
+    username: props_().getProperty('IG_USERNAME') || '',
+    account_type: props_().getProperty('IG_ACCOUNT_TYPE') || '',
+    enabled: s.enabled,
+    count: s.count,
+    heading: s.heading,
+    days_left: token && expires ? Math.max(0, Math.floor((expires - Date.now()) / 86400000)) : null,
+    expiry_estimated: props_().getProperty('IG_EXPIRES_EXACT') !== 'true',
+    last_ok: lastOk ? isoIst_(new Date(lastOk)) : '',
+    last_error: props_().getProperty('IG_LAST_ERROR') || ''
+  };
+}
+
+function getInstagram_() {
+  var feed = props_().getProperty('IG_TOKEN') ? igFeed_(false) : { posts: [] };
+  var status = igStatus_(); // read after the fetch, so "last updated" and "last problem" are current
+  status.posts = feed.posts.slice(0, status.count);
+  if (feed.error) status.last_error = feed.error;
+  return status;
+}
+
+function connectInstagram_(p) {
+  var token = String(p.access_token || '').replace(/\s/g, '');
+  if (!/^[A-Za-z0-9_.\-]{20,600}$/.test(token)) return { ok: false, error: 'That does not look like an Instagram access token. Copy the whole token and paste it again.' };
+  var r = igCall_('/me', { fields: 'user_id,username,account_type', access_token: token });
+  if (!(r.code === 200 && r.body && r.body.username)) return { ok: false, error: igError_(r) };
+  var username = /^[A-Za-z0-9_.]{1,30}$/.test(String(r.body.username)) ? String(r.body.username) : '';
+  var now = Date.now();
+  var firstTime = !props_().getProperty('IG_TOKEN');
+  props_().setProperties({
+    IG_TOKEN: token,
+    IG_USERNAME: username,
+    IG_ACCOUNT_TYPE: clip_(r.body.account_type, 30),
+    IG_REFRESHED: String(now),
+    IG_EXPIRES: String(now + IG.TOKEN_LIFE_MS), // a token made in the Meta dashboard lasts 60 days; renewals then report the exact date
+    IG_EXPIRES_EXACT: ''
+  });
+  props_().deleteProperty('IG_LAST_ERROR');
+  props_().deleteProperty('IG_RENEW_TRIED');
+  if (firstTime && props_().getProperty('IG_ENABLED') === null) props_().setProperty('IG_ENABLED', 'true');
+  CacheService.getScriptCache().remove('ig:fresh');
+  CacheService.getScriptCache().remove('ig:backoff');
+  return getInstagram_();
+}
+
+function saveInstagramSettings_(p) {
+  var count = Number(p.count);
+  if (!(count >= IG.MIN_COUNT && count <= IG.MAX_COUNT) || Math.floor(count) !== count) {
+    return { ok: false, error: 'Choose between ' + IG.MIN_COUNT + ' and ' + IG.MAX_COUNT + ' posts.' };
+  }
+  var heading = clip_(p.heading, 60) || IG.DEFAULT_HEADING;
+  props_().setProperties({
+    IG_ENABLED: (p.enabled === 'true' || p.enabled === true) ? 'true' : 'false',
+    IG_COUNT: String(count),
+    IG_HEADING: heading
+  });
+  return getInstagram_();
+}
+
+function refreshInstagram_() {
+  if (!props_().getProperty('IG_TOKEN')) return { ok: false, error: 'Instagram is not connected.' };
+  var renewed = null;
+  if (Date.now() - Number(props_().getProperty('IG_REFRESHED') || 0) > 24 * 60 * 60 * 1000) renewed = igRenew_();
+  var feed = igFeed_(true);
+  var status = igStatus_();
+  status.posts = feed.posts.slice(0, status.count);
+  status.last_error = feed.error || '';
+  if (renewed && !renewed.ok && !feed.error) status.last_error = renewed.error;
+  return status;
+}
+
+function disconnectInstagram_() {
+  ['IG_TOKEN', 'IG_USERNAME', 'IG_ACCOUNT_TYPE', 'IG_REFRESHED', 'IG_EXPIRES', 'IG_EXPIRES_EXACT',
+   'IG_RENEW_TRIED', 'IG_LAST_OK', 'IG_LAST_ERROR'].forEach(function (k) { props_().deleteProperty(k); });
+  var cache = CacheService.getScriptCache();
+  ['ig:fresh', 'ig:backoff', 'ig:posts'].forEach(function (k) { cache.remove(k); });
+  return { ok: true };
 }
 
 /* ====================================== setup ====================================== */

@@ -567,9 +567,10 @@ export const DEVELOPER_ONLY: Record<string, Record<string, boolean | string | nu
   settings: { show_free_tests: false },
 };
 
-export const HOME_SECTIONS: { title: string; fields: Field[] }[] = [
+export const HOME_SECTIONS: { title: string; note?: string; fields: Field[] }[] = [
   {
     title: 'Hero',
+    note: 'While a video or a poster image is set, the Home page shows only that: clean and full width, with no text or buttons on top of it. The welcome line, headline, sub-text and buttons below are still saved and are shown only if you remove both the video and the poster. The search bar and the four stat tiles are always shown.',
     fields: [
       {
         key: 'hero_video_url',

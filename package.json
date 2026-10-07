@@ -14,6 +14,7 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "placeholders": "node scripts/make-placeholders.mjs",
+    "brand": "node scripts/make-brand.mjs",
     "hash": "node scripts/hash-password.mjs",
     "check:layout": "node scripts/check-layout.mjs",
     "build:local": "PUBLIC_BACKEND_URL=http://localhost:8787 astro build",

@@ -3,12 +3,13 @@
 This is done **once**, when the site goes live. Until then, `npm run dev` uses a local stand-in
 (`dev-server/server.mjs`) that behaves the same way, so nothing here is needed to build or demo the site.
 
-The backend lives in the institute's own Google account. It does four things:
+The backend lives in the institute's own Google account. It does five things:
 
 1. receives enquiries from the website forms and writes them to a Google Sheet,
 2. checks admin logins (login + password, no GitHub account needed),
 3. shows the enquiries to the admin panel,
-4. saves content edits and uploaded images to the GitHub repo, which rebuilds the site.
+4. saves content edits and uploaded images to the GitHub repo, which rebuilds the site,
+5. optionally serves the live Instagram feed for the Home page (step 8).
 
 You need: the **institute's Google account**, the **GitHub repo** (`ccs-website`) and about 20 minutes.
 
@@ -97,6 +98,27 @@ In Apps Script: **Project Settings > Script Properties > Add script property**. 
 3. Test: open the live site, submit the enquiry popup, and check a new row appears at the top of the **Enquiries** tab with Status **Open**. A form with only name, mobile number and exam must work too: the other fields are optional.
 4. Sign in at `/admin/` with the first admin and check that Settings has no Free Tests switch (that one belongs to the developer).
 
+## Step 8 (optional): Instagram live feed
+
+Nothing to do in Apps Script for this: it is already in `Code.gs`, and the `IG_*` Script Properties are written by the
+admin panel itself (never add them by hand; the access token must not be typed anywhere but **Admin > Instagram**).
+
+1. The institute's Instagram account must be a **Business or Creator** account.
+2. On developers.facebook.com create an app, add the **Instagram** product, choose "API setup with Instagram login",
+   add the account and **Generate token**. (Meta rearranges these screens now and then; what you need is a long-lived
+   access token for "Instagram API with Instagram Login".)
+3. Sign in to `/admin/`, open **Instagram**, paste the token, press **Connect**. The tab shows `@account` and a
+   preview of the posts, and the Home page shows them (within seconds the first time).
+4. **Check it on the real thing**, because the automated tests use a pretend Instagram: after connecting, open the Home
+   page and confirm the posts appear and open in the player; publish a new post and confirm it appears within about
+   15 minutes; press **Refresh now** and confirm the tab says "Posts reloaded"; later, check the days left in the tab
+   goes back up to about 60 after the first automatic renewal (10 days after connecting).
+
+Notes: Apps Script needs the permission to call external services (`script.external_request`, already in
+`appsscript.json`); if you re-deploy and Google asks to authorise again, accept. The token is kept only in Script
+Properties; if it leaks, press **Disconnect** (deletes it) and revoke the app's access in Instagram (Settings >
+Apps and websites).
+
 ## Updating the script later
 
 Changing `Code.gs` needs a **new version** of the deployment: **Deploy > Manage deployments > pencil icon > Version: New version > Deploy.**
@@ -110,12 +132,14 @@ The URL stays the same.
 
 ## Troubleshooting
 
-| Symptom                                                    | Fix                                                                                                                                                                                                        |
-| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Admin says "Session expired" straight after login          | `SIGNING_SECRET` is missing or shorter than 16 characters.                                                                                                                                                 |
-| "GITHUB_REPO / GITHUB_TOKEN script properties are missing" | Step 4, check the spelling of the property names.                                                                                                                                                          |
-| "Could not save to GitHub (error 401/403)"                 | Token expired or lacks **Contents: Read and write** on `ccs-website`.                                                                                                                                      |
-| "Could not save to GitHub (error 404)"                     | `GITHUB_REPO` is wrong, or the token was not granted this repo.                                                                                                                                            |
-| Enquiry form shows "Call us / WhatsApp us"                 | The URL in `src/config/backend.ts` is wrong or the deployment access is not "Anyone".                                                                                                                      |
-| Times look wrong                                           | Project Settings > Time zone must be **Asia/Kolkata** (setup() also sets the sheet's time zone).                                                                                                           |
-| Lost the admin password                                    | In the hidden Admins tab (View > Hidden sheets) paste a new salt + hash made with `npm run hash -- 'NewPassword1'`, or delete the admin's row, add the `FIRST_ADMIN_*` properties again and run `setup()`. |
+| Symptom                                                        | Fix                                                                                                                                                                                                        |
+| -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Admin says "Session expired" straight after login              | `SIGNING_SECRET` is missing or shorter than 16 characters.                                                                                                                                                 |
+| "GITHUB_REPO / GITHUB_TOKEN script properties are missing"     | Step 4, check the spelling of the property names.                                                                                                                                                          |
+| "Could not save to GitHub (error 401/403)"                     | Token expired or lacks **Contents: Read and write** on `ccs-website`.                                                                                                                                      |
+| "Could not save to GitHub (error 404)"                         | `GITHUB_REPO` is wrong, or the token was not granted this repo.                                                                                                                                            |
+| Enquiry form shows "Call us / WhatsApp us"                     | The URL in `src/config/backend.ts` is wrong or the deployment access is not "Anyone".                                                                                                                      |
+| Times look wrong                                               | Project Settings > Time zone must be **Asia/Kolkata** (setup() also sets the sheet's time zone).                                                                                                           |
+| Instagram tab: "Instagram no longer accepts this access token" | The token expired (no website visits for ~50 days) or was revoked. Generate a new one and use **Replace access token**.                                                                                    |
+| Instagram section missing on the Home page                     | Tab says not connected, or the switch is off, or there are no posts yet (press **Refresh now**). Check the Apps Script URL in `src/config/backend.ts` is set: without it the section is not built at all.  |
+| Lost the admin password                                        | In the hidden Admins tab (View > Hidden sheets) paste a new salt + hash made with `npm run hash -- 'NewPassword1'`, or delete the admin's row, add the `FIRST_ADMIN_*` properties again and run `setup()`. |

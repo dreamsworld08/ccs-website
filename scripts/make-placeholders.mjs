@@ -1,14 +1,10 @@
 // Generates the dummy SVG artwork used by the seed content.
 // Run: npm run placeholders   (safe to re-run; real uploads are never touched)
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 
 const dir = 'public/uploads/placeholders';
 mkdirSync(dir, { recursive: true });
 const write = (name, svg) => writeFileSync(`${dir}/${name}`, svg.trim() + '\n');
-// Brand files are written only when missing, so a real logo dropped into public/ is never overwritten.
-const writeBrand = (file, svg) => {
-  if (!existsSync(file)) writeFileSync(file, svg);
-};
 
 const palettes = [
   ['#DFF6E2', '#1F8A3B'],
@@ -90,32 +86,4 @@ write(
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400" role="img" aria-label="Placeholder image"><rect width="640" height="400" fill="#EDF0F5"/><path d="M200 280l80-100 60 70 40-50 80 80z" fill="#C7CEDB"/><circle cx="250" cy="150" r="28" fill="#C7CEDB"/></svg>`,
 );
 
-// Brand assets (replace public/logo.svg and public/favicon.svg with the real logo).
-writeBrand(
-  'public/logo.svg',
-  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 168 40" role="img" aria-label="Chandigarh Civil Services">
-  <rect width="40" height="40" rx="12" fill="#0042F6"/>
-  <path d="M26.5 14.2A8.4 8.4 0 1 0 26.5 25.8" fill="none" stroke="#fff" stroke-width="3.6" stroke-linecap="round"/>
-  <circle cx="29.2" cy="20" r="2.6" fill="#FFB41F"/>
-  <text x="52" y="19" font-family="Avenir Next Condensed, Roboto Condensed, Arial Narrow, Arial, sans-serif" font-weight="700" font-size="19" letter-spacing=".5" fill="#1A1B1F">CHANDIGARH</text>
-  <text x="52" y="35" font-family="Avenir Next Condensed, Roboto Condensed, Arial Narrow, Arial, sans-serif" font-weight="700" font-size="15" letter-spacing="1.6" fill="#0042F6">CIVIL SERVICES</text>
-</svg>
-`,
-);
-writeBrand(
-  'public/logo-light.svg',
-  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 168 40" role="img" aria-label="Chandigarh Civil Services">
-  <rect width="40" height="40" rx="12" fill="#fff"/>
-  <path d="M26.5 14.2A8.4 8.4 0 1 0 26.5 25.8" fill="none" stroke="#0042F6" stroke-width="3.6" stroke-linecap="round"/>
-  <circle cx="29.2" cy="20" r="2.6" fill="#FF5C33"/>
-  <text x="52" y="19" font-family="Avenir Next Condensed, Roboto Condensed, Arial Narrow, Arial, sans-serif" font-weight="700" font-size="19" letter-spacing=".5" fill="#fff">CHANDIGARH</text>
-  <text x="52" y="35" font-family="Avenir Next Condensed, Roboto Condensed, Arial Narrow, Arial, sans-serif" font-weight="700" font-size="15" letter-spacing="1.6" fill="#FFB41F">CIVIL SERVICES</text>
-</svg>
-`,
-);
-writeBrand(
-  'public/favicon.svg',
-  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><rect width="40" height="40" rx="12" fill="#0042F6"/><path d="M26.5 14.2A8.4 8.4 0 1 0 26.5 25.8" fill="none" stroke="#fff" stroke-width="3.6" stroke-linecap="round"/><circle cx="29.2" cy="20" r="2.6" fill="#FFB41F"/></svg>
-`,
-);
 console.log('Placeholders written to', dir);

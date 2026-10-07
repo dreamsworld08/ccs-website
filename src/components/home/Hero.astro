@@ -13,13 +13,17 @@ const yt = youtubeId(home.hero_video_url);
 const mp4 = !yt && isMp4(safeHref(home.hero_video_url)) ? safeHref(home.hero_video_url) : '';
 const hasVideo = Boolean(yt || mp4);
 const poster = home.hero_poster ? withBase(home.hero_poster) : '';
+// With a video or a poster the hero shows ONLY that, clean and un-tinted. The text and buttons from the admin
+// are still saved; they are drawn only when there is nothing else to show, so the panel is never empty.
+const showText = !hasVideo && !poster;
 const btn2 = safeHref(home.hero_btn2_link, withBase('/courses'));
 const placeholder = home.hero_search_placeholder || 'Search resources, updates and results';
 ---
 
 <!--
-  Layout: video (or poster) fills the panel behind the text; headline sits top-left; the search bar is
-  centred on the panel's bottom edge (half over the video, half over the page); the stat tiles follow.
+  Layout: the video (or poster) fills a 16:9 panel with nothing on top of it (no text, no tint); the search
+  bar is centred on the panel's bottom edge (half over the video, half over the page); the stat tiles follow.
+  The headline is kept as a visually hidden <h1> for search engines and screen readers.
   The outer section is not clipped, so the search bar and its dropdown can overlap the panel's edge.
 -->
 <section
@@ -29,7 +33,14 @@ const placeholder = home.hero_search_placeholder || 'Search resources, updates a
   data-mp4={mp4}
 >
   <div class="relative">
-    <div class="panel on-dark bg-[linear-gradient(150deg,#0A1B5C_0%,#0042F6_58%,#6047FF_130%)] text-white min-h-[560px] md:min-h-[680px]">
+    <div
+      class:list={[
+        'panel on-dark bg-[linear-gradient(150deg,#0A1B5C_0%,#0042F6_58%,#6047FF_130%)] text-white',
+        // The whole video is visible (16:9); on very wide screens it is trimmed so it still fits one screen.
+        // No min-height here: with an aspect ratio it would widen the panel past a narrow phone's screen.
+        showText ? 'min-h-[560px] md:min-h-[680px]' : 'aspect-video max-h-[calc(100svh-6rem)]',
+      ]}
+    >
       <div class="absolute inset-0 [container-type:size]" data-hero-media>
         {poster && (
           <Img
@@ -58,7 +69,9 @@ const placeholder = home.hero_search_placeholder || 'Search resources, updates a
           </video>
         )}
       </div>
-      <div class="absolute inset-0 bg-[linear-gradient(to_bottom,rgb(26_27_31/0.72)_0%,rgb(26_27_31/0.4)_55%,rgb(26_27_31/0.55)_100%)]"></div>
+      {showText && (
+        <div class="absolute inset-0 bg-[linear-gradient(to_bottom,rgb(26_27_31/0.72)_0%,rgb(26_27_31/0.4)_55%,rgb(26_27_31/0.55)_100%)]"></div>
+      )}
 
       {hasVideo && (
         <button
@@ -73,36 +86,40 @@ const placeholder = home.hero_search_placeholder || 'Search resources, updates a
         </button>
       )}
 
-      <div class="container-x relative pt-14 pb-28 md:pt-20 md:pb-36">
-        {home.hero_kicker && (
-          <p class="mb-3 text-[13px] font-medium uppercase tracking-[0.18em] text-white/90 md:mb-4 md:text-[15px]">
-            {home.hero_kicker}
-          </p>
-        )}
-        <h1 class="display max-w-[1000px]">{home.hero_headline}</h1>
-        {home.hero_subtext && (
-          <p class="mt-4 max-w-[600px] text-[16px] text-white/85 md:mt-5 md:text-[19px]">
-            {home.hero_subtext}
-          </p>
-        )}
-        <div class="mt-6 flex flex-col gap-3 sm:flex-row md:mt-8">
-          <button
-            type="button"
-            class="btn btn-primary !bg-white !text-ink hover:!bg-panel sm:min-w-[220px]"
-            data-open-enquiry
-            data-exam=""
-          >
-            {home.hero_btn1_label}
-            <Icon name="arrow-right" size={18} />
-          </button>
-          <a
-            href={btn2}
-            class="btn btn-outline !border-white/40 !text-white hover:!bg-white/10 sm:min-w-[180px]"
-          >
-            {home.hero_btn2_label}
-          </a>
+      {showText ? (
+        <div class="container-x relative pt-14 pb-28 md:pt-20 md:pb-36">
+          {home.hero_kicker && (
+            <p class="mb-3 text-[13px] font-medium uppercase tracking-[0.18em] text-white/90 md:mb-4 md:text-[15px]">
+              {home.hero_kicker}
+            </p>
+          )}
+          <h1 class="display max-w-[1000px]">{home.hero_headline}</h1>
+          {home.hero_subtext && (
+            <p class="mt-4 max-w-[600px] text-[16px] text-white/85 md:mt-5 md:text-[19px]">
+              {home.hero_subtext}
+            </p>
+          )}
+          <div class="mt-6 flex flex-col gap-3 sm:flex-row md:mt-8">
+            <button
+              type="button"
+              class="btn btn-primary !bg-white !text-ink hover:!bg-panel sm:min-w-[220px]"
+              data-open-enquiry
+              data-exam=""
+            >
+              {home.hero_btn1_label}
+              <Icon name="arrow-right" size={18} />
+            </button>
+            <a
+              href={btn2}
+              class="btn btn-outline !border-white/40 !text-white hover:!bg-white/10 sm:min-w-[180px]"
+            >
+              {home.hero_btn2_label}
+            </a>
+          </div>
         </div>
-      </div>
+      ) : (
+        <h1 class="sr-only">{home.hero_headline}</h1>
+      )}
     </div>
 
     <div class="absolute inset-x-0 bottom-0 translate-y-1/2 px-4 md:px-10">

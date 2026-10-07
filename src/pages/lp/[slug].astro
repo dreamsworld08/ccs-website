@@ -1,6 +1,7 @@
 ---
 import Base from '../../layouts/Base.astro';
 import Icon from '../../components/Icon.astro';
+import Brand from '../../components/Brand.astro';
 import ResultCard from '../../components/ResultCard.astro';
 import EnquiryForm from '../../islands/EnquiryForm';
 import Countdown from '../../islands/Countdown';
@@ -27,17 +28,22 @@ const tones = ['bg-mint', 'bg-lavender', 'bg-peach'];
 >
   <header slot="header" class="bg-white">
     <div class="container-x flex h-16 items-center justify-between gap-3">
-      <a href={withBase('/')} aria-label="Chandigarh Civil Services">
-        <img
-          src={withBase('/logo.svg')}
-          alt="Chandigarh Civil Services"
-          width="150"
-          height="36"
-          class="h-8 w-auto md:h-9"
-        />
+      <a
+        href={withBase('/')}
+        class="inline-flex shrink-0 items-center gap-2 sm:gap-2.5"
+        aria-label="Chandigarh Civil Services, home"
+      >
+        <Brand />
       </a>
-      <a href={telLink(settings.phone)} class="btn btn-secondary btn-sm !min-h-11">
-        <Icon name="phone" size={16} /> <span class="mono">{settings.phone}</span>
+      <a
+        href={telLink(settings.phone)}
+        class="btn btn-secondary btn-sm !min-h-11"
+        aria-label={`Call ${settings.phone}`}
+      >
+        <Icon name="phone" size={16} />
+        <!-- The number does not fit beside the logo on the very smallest phones: they get a short label. -->
+        <span class="mono max-[359px]:hidden">{settings.phone}</span>
+        <span class="min-[360px]:hidden">Call us</span>
       </a>
     </div>
   </header>

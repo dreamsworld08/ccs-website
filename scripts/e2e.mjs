@@ -107,9 +107,9 @@ console.log('\nPopup + enquiry form (mobile 390px)');
     () => !!document.querySelector('astro-island[client="idle"]:not([ssr])') || true,
   );
   await sleep(500);
-  await click(page, '[data-hero] [data-open-enquiry]');
+  await click(page, 'header [data-open-enquiry]');
   await page.waitForSelector('dialog[open]');
-  ok('popup opens from the hero button');
+  ok('popup opens from the header Enquire button');
   const sheet = await page.evaluate(() => {
     const r = document.querySelector('dialog[open]').getBoundingClientRect();
     return {
@@ -133,7 +133,7 @@ console.log('\nPopup + enquiry form (mobile 390px)');
   await sleep(300);
   check(!(await page.$('dialog[open]')), 'Escape closes the popup');
 
-  await click(page, '[data-hero] [data-open-enquiry]');
+  await click(page, 'header [data-open-enquiry]');
   await page.waitForSelector('dialog[open] form');
   await page.click('dialog[open] button[type=submit]');
   await sleep(200);
@@ -181,7 +181,7 @@ console.log('\nPopup + enquiry form (mobile 390px)');
     document.querySelector('dialog[open] button[aria-label="Close enquiry form"]').click(),
   );
   await sleep(300);
-  await click(page, '[data-hero] [data-open-enquiry]');
+  await click(page, 'header [data-open-enquiry]');
   await page.waitForSelector('dialog[open] form');
   await page.type('dialog[open] input[name=name]', 'Second Try');
   await page.type('dialog[open] input[name=mobile]', freshMobile());
@@ -203,7 +203,7 @@ console.log('\nEnquiry form: only name, mobile and exam are mandatory');
   const page = await newPage();
   await open(page, '/');
   await sleep(400);
-  await click(page, '[data-hero] [data-open-enquiry]');
+  await click(page, 'header [data-open-enquiry]');
   await page.waitForSelector('dialog[open] form');
   const form = await page.evaluate(() => {
     const d = document.querySelector('dialog[open]');
@@ -565,37 +565,76 @@ console.log('\nSite search (nav dropdown + /search/ page)');
 }
 
 /* ============================================================ hero search */
-console.log('\nHome hero: video behind, search bar on the bottom edge');
+console.log('\nHome hero: clean 16:9 video, search bar on the bottom edge');
 {
   const page = await newPage(390);
   await open(page, '/');
   await sleep(600);
   const geo = await page.evaluate(() => {
-    const panel = document.querySelector('[data-hero] .panel').getBoundingClientRect();
+    const panel = document.querySelector('[data-hero] .panel');
+    const pr = panel.getBoundingClientRect();
     const bar = document.querySelector('[data-hero] form[role=search]').getBoundingClientRect();
     const media = document.querySelector('[data-hero-media]').getBoundingClientRect();
-    const h1 = document.querySelector('[data-hero] h1').getBoundingClientRect();
+    const h1 = document.querySelector('[data-hero] h1');
+    const h1r = h1.getBoundingClientRect();
+    const visible = (el) => {
+      const r = el.getBoundingClientRect();
+      const cs = getComputedStyle(el);
+      return r.width > 2 && r.height > 2 && cs.visibility !== 'hidden' && cs.display !== 'none';
+    };
     return {
-      overlapsEdge: bar.top < panel.bottom && bar.bottom > panel.bottom,
+      overlapsEdge: bar.top < pr.bottom && bar.bottom > pr.bottom,
       centred: Math.abs(bar.left + bar.width / 2 - innerWidth / 2) <= 2,
       mediaFillsPanel:
-        Math.abs(media.height - panel.height) <= 1 && Math.abs(media.width - panel.width) <= 1,
-      headlineAboveBar: h1.bottom < bar.top,
-      headlineLeft: h1.left < innerWidth / 4,
+        Math.abs(media.height - pr.height) <= 1 && Math.abs(media.width - pr.width) <= 1,
+      ratio: pr.width / pr.height,
+      // anything drawn on top of the video except the Play/Sound button
+      overlayChildren: [...panel.children]
+        .filter(
+          (c) => c !== panel.querySelector('[data-hero-media]') && !c.matches('[data-hero-sound]'),
+        )
+        .filter((c) => visible(c) || getComputedStyle(c).backgroundImage !== 'none')
+        .map((c) => c.tagName + '.' + String(c.className).slice(0, 40)),
+      textInPanel: [...panel.querySelectorAll('h1, h2, p, a, [data-open-enquiry]')].filter(visible)
+        .length,
+      h1Text: h1.textContent.trim(),
+      h1Hidden: h1r.width <= 2 && h1r.height <= 2,
     };
   });
   check(
     geo.mediaFillsPanel,
-    'the video/poster layer fills the whole hero panel (text sits on top of it)',
+    'the video/poster layer fills the whole hero panel',
     JSON.stringify(geo),
   );
-  check(geo.headlineLeft && geo.headlineAboveBar, 'headline is top-left, above the search bar');
+  check(
+    Math.abs(geo.ratio - 16 / 9) < 0.03,
+    'the hero is 16:9, so the whole video is visible (not cropped to a tall block)',
+    String(geo.ratio),
+  );
+  check(
+    geo.overlayChildren.length === 0 && geo.textInPanel === 0,
+    'nothing is drawn over the video: no dark tint, no headline, text or buttons',
+    JSON.stringify(geo.overlayChildren),
+  );
+  check(
+    geo.h1Text.length > 3 && geo.h1Hidden,
+    'the headline stays in the page as a visually hidden <h1> (search engines, screen readers)',
+    JSON.stringify({ t: geo.h1Text, hidden: geo.h1Hidden }),
+  );
   check(
     geo.centred && geo.overlapsEdge,
     'search bar is centred on the bottom edge of the hero',
     JSON.stringify(geo),
   );
+  const play = await page.$eval('[data-hero-sound]', (b) => b.getBoundingClientRect().width > 40);
+  check(play, 'the Play video button is still available on the video');
+  await page.close();
+}
 
+{
+  const page = await newPage(390);
+  await open(page, '/');
+  await sleep(600);
   await page.click('#hero-search-input');
   await page.waitForSelector('[data-hero] .filter-chip');
   const chips = await page.$$eval('[data-hero] .filter-chip', (els) =>
@@ -693,6 +732,161 @@ console.log('\nHome hero: video behind, search bar on the bottom edge');
   await nojs.close();
 }
 
+/* ============================================================ brand */
+console.log('\nBrand: logo, favicon and share image');
+{
+  const page = await newPage(1280, false);
+  await open(page, '/');
+  const head = await page.evaluate(() => ({
+    icons: [
+      ...document.querySelectorAll(
+        'link[rel~="icon"], link[rel="apple-touch-icon"], link[rel="manifest"]',
+      ),
+    ].map((l) => `${l.rel}:${new URL(l.href).pathname.split('/').pop()}`),
+    header: (() => {
+      const img = document.querySelector('header a[aria-label$="home"] img');
+      return {
+        loaded: !!img && img.complete && img.naturalWidth > 0,
+        text: document
+          .querySelector('header a[aria-label$="home"]')
+          ?.textContent.replace(/\s+/g, ' ')
+          .trim(),
+      };
+    })(),
+    footerLoaded: (() => {
+      const img = document.querySelector('footer img[src*="logo-mark"]');
+      return !!img && (img.loading === 'lazy' || img.complete);
+    })(),
+    jsonLd: (document
+      .querySelector('script[type="application/ld+json"]')
+      ?.textContent.match(/"logo":"([^"]+)"/) || [])[1],
+  }));
+  check(
+    [
+      'icon:favicon.ico',
+      'icon:icon-192.png',
+      'apple-touch-icon:apple-touch-icon.png',
+      'manifest:site.webmanifest',
+    ].every((x) => head.icons.includes(x)),
+    'the page declares the favicon, a 192 px icon, the iPhone home-screen icon and the web manifest',
+    head.icons.join(' '),
+  );
+  check(head.header.loaded, 'the header shows the school emblem');
+  check(
+    /Chandigarh\s*Civil Services/i.test(head.header.text),
+    'the header shows the school name next to it',
+    head.header.text,
+  );
+  check(head.footerLoaded, 'the footer shows the emblem');
+  check(
+    /\/brand\/logo-full\.png$/.test(head.jsonLd || ''),
+    'search engines are pointed at the full logo (structured data)',
+    String(head.jsonLd),
+  );
+
+  const get = async (path) => {
+    const r = await fetch(SITE + path);
+    return { ok: r.ok, bytes: Buffer.from(await r.arrayBuffer()) };
+  };
+  const ico = await get('/favicon.ico');
+  check(
+    ico.ok &&
+      ico.bytes.readUInt16LE(2) === 1 &&
+      ico.bytes.readUInt16LE(4) === 3 &&
+      ico.bytes.length < 20000,
+    'favicon.ico holds the 16, 32 and 48 px icons and is tiny',
+    `${ico.bytes.length} bytes`,
+  );
+  const dims = async (path) => {
+    const r = await get(path);
+    const m = await sharp(r.bytes).metadata();
+    return `${r.ok ? '' : 'MISSING '}${m.width}x${m.height}`;
+  };
+  check((await dims('/icon-192.png')) === '192x192', 'icon-192.png is 192 x 192');
+  check((await dims('/icon-512.png')) === '512x512', 'icon-512.png is 512 x 512');
+  check((await dims('/apple-touch-icon.png')) === '180x180', 'the iPhone icon is 180 x 180');
+  check(
+    (await dims('/og-default.png')) === '1200x630',
+    'the social-share image is still 1200 x 630',
+  );
+  const mark = await get('/brand/logo-mark.webp');
+  check(
+    mark.ok && mark.bytes.length < 30000,
+    'the header emblem is light (under 30 KB)',
+    `${mark.bytes.length} bytes`,
+  );
+  const manifest = JSON.parse((await get('/site.webmanifest')).bytes.toString());
+  check(
+    manifest.icons?.length === 2 && manifest.name === 'Chandigarh Civil Services',
+    'the web manifest names the school and lists the icons',
+  );
+  check(
+    !(await get('/logo.svg')).ok && !(await get('/favicon.svg')).ok,
+    'the old placeholder logo files are gone',
+  );
+  check(page.errors.length === 0, 'no console errors on Home', page.errors.join(' | '));
+  await page.close();
+
+  // No page may ask for a file that does not exist (a leftover link to a removed logo would show a broken picture).
+  const missing = [];
+  for (const path of [
+    '/',
+    '/courses/',
+    '/results/',
+    '/about-teachers/',
+    '/free-resources/',
+    '/exam-updates/',
+    '/privacy-policy/',
+    '/search/',
+    '/lp/upsc-scholarship-test-2027/',
+    '/admin/',
+  ]) {
+    const pg = await newPage(390);
+    pg.on('response', (r) => {
+      if (r.status() >= 400 && r.url().startsWith(SITE))
+        missing.push(`${path} -> ${r.url().replace(SITE, '')} (${r.status()})`);
+    });
+    await open(pg, path);
+    if (path.startsWith('/lp/')) {
+      const logo = await pg.evaluate(() => {
+        const img = document.querySelector('header img');
+        return !!img && img.complete && img.naturalWidth > 0;
+      });
+      check(logo, 'the landing-page header shows the emblem too');
+    }
+    await pg.close();
+  }
+  check(
+    missing.length === 0,
+    'no page asks for a file that is missing (no broken logos or icons)',
+    missing.join('; '),
+  );
+
+  // The header must fit on small phones: the logo may not push the menu button off the screen.
+  for (const w of [360, 390]) {
+    const phone = await newPage(w);
+    await open(phone, '/');
+    const fit = await phone.evaluate(() => {
+      const vw = document.documentElement.clientWidth;
+      const logo = document.querySelector('header a[aria-label$="home"]').getBoundingClientRect();
+      const menu = document.querySelector('header #nav-toggle').getBoundingClientRect();
+      return {
+        vw,
+        logoRight: Math.round(logo.right),
+        menuLeft: Math.round(menu.left),
+        menuRight: Math.round(menu.right),
+        pageW: document.documentElement.scrollWidth,
+      };
+    });
+    check(
+      fit.menuRight <= fit.vw && fit.pageW <= fit.vw && fit.logoRight <= fit.menuLeft,
+      `on a ${w} px phone the logo fits and the menu button stays on screen`,
+      JSON.stringify(fit),
+    );
+    await phone.close();
+  }
+}
+
 /* ============================================================ topper reels */
 console.log('\nTopper reels (Instagram carousel)');
 {
@@ -735,11 +929,25 @@ console.log('\nTopper reels (Instagram carousel)');
   );
   check(
     (await page.$$('iframe[src*="instagram"]')).length === 0,
-    'no Instagram frame (and no third-party request) before a reel is tapped',
+    'no Instagram frame is requested at page load (previews wait until the carousel is near the screen)',
   );
 
   await page.evaluate(() => document.querySelector('[data-reels-root]').scrollIntoView());
   await sleep(300);
+  // Whatever the first card is (a real reel, a photo post or a sample), the player must open exactly that one.
+  const firstCard = await page.$eval('[data-reel]', (b) => ({
+    kind: b.dataset.kind,
+    code: b.dataset.reel,
+    name: b.dataset.name,
+  }));
+  const playBadges = await page.$$eval('[data-reel]', (cards) =>
+    cards.map((c) => ({ kind: c.dataset.kind, play: !!c.querySelector('[data-reel-play]') })),
+  );
+  check(
+    playBadges.every((c) => c.play === (c.kind !== 'p')),
+    'reels show a play button; photo posts do not (there is nothing to play)',
+    JSON.stringify(playBadges),
+  );
   await page.click('[data-reel]');
   await page.waitForSelector('#reel-dialog[open] iframe');
   const d = await page.evaluate(() => {
@@ -755,7 +963,7 @@ console.log('\nTopper reels (Instagram carousel)');
     };
   });
   check(
-    /^https:\/\/www\.instagram\.com\/reel\/SAMPLE_REEL_01\/embed\/$/.test(d.src),
+    d.src === `https://www.instagram.com/${firstCard.kind}/${firstCard.code}/embed/`,
     'tapping a card loads that reel in the player',
     d.src,
   );
@@ -765,7 +973,8 @@ console.log('\nTopper reels (Instagram carousel)');
     d.sandbox,
   );
   check(
-    d.link === 'https://www.instagram.com/reel/SAMPLE_REEL_01/' && d.title === 'Aman Gill',
+    d.link === `https://www.instagram.com/${firstCard.kind}/${firstCard.code}/` &&
+      d.title === firstCard.name,
     'the player names the student and offers "Open on Instagram"',
     JSON.stringify(d),
   );
@@ -830,6 +1039,149 @@ console.log('\nTopper reels (Instagram carousel)');
   await api('deleteContent', { token: ADMIN_TOKEN, path: 'reels/e2e-reel.json', sha: stored.sha });
 }
 
+/* ============================================================ reel previews */
+console.log('\nReel previews: the cards show the reel without a tap');
+{
+  // Sample reels (placeholder codes) are never previewed, and which real posts exist depends on what the
+  // institute has put in the admin. So each scenario marks exactly ONE card of a given kind as real
+  // before the page script runs, the way the build does for a non-sample reel, and un-marks the rest.
+  const markOne = (kind) =>
+    document.addEventListener('readystatechange', () => {
+      if (document.readyState !== 'interactive') return;
+      const cards = [...document.querySelectorAll('[data-reel]')];
+      cards.forEach((c) => c.removeAttribute('data-preview'));
+      cards.find((c) => c.dataset.kind === kind)?.setAttribute('data-preview', '');
+    });
+  const igFrames = (page) => page.$$eval('iframe[src*="instagram"]', (f) => f.length);
+  const hasKind = async (kind) => {
+    const probe = await newPage(390);
+    await open(probe, '/');
+    const found = await probe.$(`[data-reel][data-kind="${kind}"]`);
+    await probe.close();
+    return Boolean(found);
+  };
+
+  /** Loads the home page with one previewed card of this kind, and measures the preview. */
+  async function previewScenario(kind) {
+    const page = await newPage(390);
+    await page.evaluateOnNewDocument(markOne, kind);
+    await page.evaluateOnNewDocument(() => sessionStorage.setItem('ccs_popup_shown', '1'));
+    await open(page, '/');
+    await sleep(1500);
+    check(
+      (await igFrames(page)) === 0,
+      'nothing is requested from Instagram while the carousel is far off screen',
+    );
+    await page.evaluate(() => document.querySelector('[data-reels-root]').scrollIntoView());
+    await page.waitForSelector('[data-reel-preview] iframe', { timeout: 8000 });
+    await sleep(400);
+    const pv = await page.evaluate(() => {
+      const frames = [...document.querySelectorAll('[data-reel-preview] iframe')];
+      const f = frames[0];
+      const card = f.closest('[data-reel]');
+      const cr = card.getBoundingClientRect();
+      const fr = f.getBoundingClientRect();
+      return {
+        count: frames.length,
+        kind: card.dataset.kind,
+        code: card.dataset.reel,
+        src: f.src,
+        sandbox: f.getAttribute('sandbox'),
+        noPointer: getComputedStyle(f).pointerEvents === 'none',
+        hiddenFromAt: f.getAttribute('aria-hidden') === 'true' && f.tabIndex === -1,
+        inert: f.parentElement.hasAttribute('inert'),
+        fillsCardWidth: Math.abs(fr.width - cr.width) <= 2,
+        coversCardWidth: fr.width >= cr.width - 2,
+        centredOnCard: Math.abs((fr.left + fr.right) / 2 - (cr.left + cr.right) / 2) <= 2,
+        cardW: Math.round(cr.width),
+      };
+    });
+    check(
+      pv.count === 1 && pv.src === `https://www.instagram.com/${pv.kind}/${pv.code}/embed/`,
+      `a real ${kind === 'p' ? 'photo post' : 'reel'} gets a preview, and only that one (placeholders are skipped)`,
+      JSON.stringify(pv),
+    );
+    check(
+      pv.noPointer && pv.hiddenFromAt && pv.inert,
+      'the preview is display-only: no pointer events, not focusable, hidden from screen readers',
+      JSON.stringify(pv),
+    );
+    if (kind === 'p') {
+      // A photo post is roughly square: it is scaled to cover the tall card and cropped at the sides.
+      check(
+        pv.coversCardWidth && pv.centredOnCard,
+        'a photo-post preview covers the card and is centred on it',
+        JSON.stringify(pv),
+      );
+    } else {
+      check(
+        pv.fillsCardWidth,
+        'the preview is scaled to the width of the card',
+        JSON.stringify(pv),
+      );
+    }
+    check(
+      pv.sandbox?.includes('allow-scripts') && !pv.sandbox.includes('allow-top-navigation'),
+      'the preview frame is sandboxed (no top-level navigation)',
+      pv.sandbox,
+    );
+    // swiping over a card must scroll the carousel (a touch on the preview must not be swallowed)
+    const sw = await page.evaluate(() => {
+      const track = document.querySelector('[data-reels-track]');
+      const card = document.querySelector('[data-reel][data-preview]');
+      const r = card.getBoundingClientRect();
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return {
+        hit: hit?.tagName,
+        onCard: hit?.closest('[data-reel]') === card && hit?.tagName !== 'IFRAME',
+        scrollable: track.scrollWidth > track.clientWidth,
+      };
+    });
+    check(
+      sw.onCard && sw.scrollable,
+      'a touch on a preview lands on the card, so swiping still scrolls the carousel and a tap opens the player',
+      JSON.stringify(sw),
+    );
+    await page.click('[data-reel][data-preview]');
+    await page.waitForSelector('#reel-dialog[open] iframe');
+    ok('tapping a card with a preview still opens the full player');
+    await page.close();
+  }
+
+  await previewScenario('reel');
+  if (await hasKind('p')) await previewScenario('p');
+  else ok('(no photo post on the Home page: photo-post preview not exercised)');
+
+  // Data-saver connections get the cover picture only.
+  const lite = await newPage(390);
+  await lite.evaluateOnNewDocument(markOne, 'reel');
+  await lite.evaluateOnNewDocument(() => {
+    sessionStorage.setItem('ccs_popup_shown', '1');
+    Object.defineProperty(navigator, 'connection', {
+      value: { saveData: true, effectiveType: '4g' },
+    });
+  });
+  await open(lite, '/');
+  await lite.evaluate(() => document.querySelector('[data-reels-root]').scrollIntoView());
+  await sleep(2500);
+  check((await igFrames(lite)) === 0, 'no previews are loaded on a data-saver connection');
+  await lite.close();
+
+  const slow = await newPage(390);
+  await slow.evaluateOnNewDocument(markOne, 'reel');
+  await slow.evaluateOnNewDocument(() => {
+    sessionStorage.setItem('ccs_popup_shown', '1');
+    Object.defineProperty(navigator, 'connection', {
+      value: { saveData: false, effectiveType: '3g' },
+    });
+  });
+  await open(slow, '/');
+  await slow.evaluate(() => document.querySelector('[data-reels-root]').scrollIntoView());
+  await sleep(2500);
+  check((await igFrames(slow)) === 0, 'no previews are loaded on a 2G/3G connection');
+  await slow.close();
+}
+
 /* ============================================================ right-click */
 console.log('\nRight-click is disabled on the public site');
 {
@@ -865,7 +1217,7 @@ console.log('\nRight-click is disabled on the public site');
     'a real right-click on the headline opens no menu',
   );
   // the enquiry form must stay usable: people paste their number
-  await click(page, '[data-hero] [data-open-enquiry]');
+  await click(page, 'header [data-open-enquiry]');
   await page.waitForSelector('dialog[open] input[name=mobile]');
   check(
     (await fire('dialog[open] input[name=mobile]', 'contextmenu')) === false,
@@ -1015,7 +1367,7 @@ console.log('\nAdmin panel (1280px)');
   const tabsShown = await page.$$eval('.tabs .tab', (t) => t.map((x) => x.textContent));
   check(
     tabsShown.join('|') ===
-      'Enquiries|Home Page|Courses|Results|Reels|Teachers|Free Resources|Exam Updates|Landing Pages|Settings',
+      'Enquiries|Home Page|Courses|Results|Reels|Instagram|Teachers|Free Resources|Exam Updates|Landing Pages|Settings',
     'tabs are in the specified order, Tests hidden',
     tabsShown.join('|'),
   );
@@ -1285,6 +1637,7 @@ console.log('\nAdmin panel (1280px)');
     ['teachers', 'table.table tbody tr', 'Teachers'],
     ['results', 'table.table tbody tr', 'Results'],
     ['reels', 'table.table tbody tr', 'Reels'],
+    ['instagram', '.section', 'Instagram'],
   ]) {
     await page.goto(`${SITE}/admin/#${hash}`);
     await page
@@ -1297,6 +1650,274 @@ console.log('\nAdmin panel (1280px)');
   await page.waitForSelector('form.login');
   ok('logout returns to the login screen');
   await page.close();
+}
+
+/* ============================================================ instagram live feed */
+console.log('\nInstagram live feed: connect in the admin, see it on the Home page');
+{
+  // Local mode: the dev backend accepts the token "demo" and serves sample posts without calling Instagram.
+  await api('disconnectInstagram', { token });
+  const homeSection = async (width = 390) => {
+    const p = await newPage(width, width < 700);
+    await p.evaluateOnNewDocument(() => sessionStorage.setItem('ccs_popup_shown', '1'));
+    await open(p, '/');
+    await sleep(2500); // the feed is requested when the page is idle
+    return p;
+  };
+  const sectionState = (p) =>
+    p.evaluate(() => {
+      const root = document.querySelector('[data-ig-root]');
+      return {
+        hidden: root.hidden,
+        cards: root.querySelectorAll('[data-ig-card]').length,
+        heading: root.querySelector('[data-ig-heading]').textContent,
+        handle: root.querySelector('[data-ig-handle]').hidden
+          ? ''
+          : `${root.querySelector('[data-ig-profile]').textContent} ${root.querySelector('[data-ig-profile]').href}`,
+      };
+    });
+
+  let p = await homeSection();
+  check(
+    (await sectionState(p)).hidden,
+    'with nothing connected the Instagram section is not on the Home page at all',
+  );
+  await p.close();
+
+  // ---- admin: connect
+  const adminPage = await newPage(1280, false);
+  adminPage.on('dialog', (d) => d.accept());
+  await open(adminPage, '/admin/');
+  await adminPage.waitForSelector('form.login');
+  await adminPage.type('form.login input[type=text]', LOGIN);
+  await adminPage.type('form.login input[type=password]', PASSWORD);
+  await adminPage.click('form.login button[type=submit]');
+  await adminPage.waitForSelector('.topbar');
+  await adminPage.goto(`${SITE}/admin/#instagram`);
+  await adminPage.waitForSelector('form.inline-form input[type=password]');
+  const steps = await adminPage.$eval(
+    '.ig-steps',
+    (d) => d.open && /Professional/.test(d.textContent),
+  );
+  check(steps, 'before connecting, the tab explains in plain words how to get the access token');
+  check(
+    await adminPage.$eval('form.inline-form input[type=password]', (i) => i.autocomplete === 'off'),
+    'the token box is a password field (hidden while typing)',
+  );
+  await adminPage.type('form.inline-form input[type=password]', '!!');
+  await adminPage.click('form.inline-form button[type=submit]');
+  await adminPage.waitForSelector('.toast-error');
+  ok('a token that is clearly not a token is refused with a message');
+  await adminPage.$eval('form.inline-form input[type=password]', (i) => {
+    i.focus();
+    i.select();
+  });
+  await adminPage.type('form.inline-form input[type=password]', 'demo');
+  await adminPage.click('form.inline-form button[type=submit]');
+  await adminPage.waitForSelector('.ig-account');
+  const connected = await adminPage.evaluate(() => ({
+    who: document.querySelector('.ig-account').textContent,
+    on: document.querySelector('.field-check input').checked,
+    previews: document.querySelectorAll('.ig-preview li').length,
+  }));
+  check(
+    /@ccs_demo/.test(connected.who),
+    'after connecting, the tab names the Instagram account',
+    connected.who,
+  );
+  check(connected.on, 'the feed is switched on by default');
+  check(
+    connected.previews === 8,
+    'the tab previews the posts visitors will see',
+    String(connected.previews),
+  );
+  check(
+    !JSON.stringify(await api('getInstagram', { token })).match(/token/i),
+    'the backend never sends the access token back, not even to an admin',
+  );
+
+  // ---- the Home page now shows it
+  p = await homeSection();
+  let st = await sectionState(p);
+  check(
+    !st.hidden && st.cards === 8,
+    'the Home page now shows the Instagram section with 8 posts',
+    JSON.stringify(st),
+  );
+  check(st.heading === 'Latest from our Instagram', 'with the default heading', st.heading);
+  check(
+    /@ccs_demo https:\/\/www\.instagram\.com\/ccs_demo\/$/.test(st.handle),
+    'it links to the account',
+    st.handle,
+  );
+  const cards = await p.$$eval('[data-ig-card]', (els) =>
+    els.map((c) => ({
+      kind: c.dataset.kind,
+      code: c.dataset.code,
+      loaded: c.querySelector('img').complete,
+      label: c.getAttribute('aria-label'),
+    })),
+  );
+  check(
+    cards[0].kind === 'p' && cards[1].kind === 'reel',
+    'photos and reels both appear, newest first',
+    JSON.stringify(cards.slice(0, 2)),
+  );
+  check(
+    cards.every((c) => c.label),
+    'every card has a description for screen readers',
+  );
+  const w = await p.$eval('[data-ig-card]', (c) => Math.round(c.getBoundingClientRect().width));
+  check(w <= 170, 'the cards are compact tiles on a phone', String(w));
+  const sc = await p.$eval('[data-ig-track]', (t) => ({
+    scrolls: t.scrollWidth > t.clientWidth,
+    page: document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+  }));
+  check(
+    sc.scrolls && sc.page,
+    'the row swipes sideways without widening the page',
+    JSON.stringify(sc),
+  );
+  await p.evaluate(() => document.querySelector('[data-ig-root]').scrollIntoView());
+  await sleep(300);
+  await p.click('[data-ig-card]');
+  await p.waitForSelector('#ig-dialog[open] iframe');
+  const d = await p.evaluate(() => {
+    const dlg = document.getElementById('ig-dialog');
+    const f = dlg.querySelector('iframe');
+    return {
+      src: f.src,
+      sandbox: f.getAttribute('sandbox'),
+      link: dlg.querySelector('[data-reel-link]').href,
+      title: dlg.querySelector('[data-reel-title]').textContent,
+    };
+  });
+  check(
+    d.src === 'https://www.instagram.com/p/DemoPost001/embed/' &&
+      d.link === 'https://www.instagram.com/p/DemoPost001/' &&
+      d.title === '@ccs_demo',
+    'tapping a post opens exactly that post in the player, with "Open on Instagram"',
+    JSON.stringify(d),
+  );
+  check(
+    d.sandbox.includes('allow-scripts') && !d.sandbox.includes('allow-top-navigation'),
+    'the player is sandboxed (no top-level navigation)',
+    d.sandbox,
+  );
+  await p.keyboard.press('Escape');
+  await sleep(250);
+  check(
+    !(await p.$('#ig-dialog[open]')) && !(await p.$('#ig-dialog iframe')),
+    'Escape closes it and removes the frame (playback stops)',
+  );
+  check(
+    !p.errors.some((e) => /Refused to/.test(e)),
+    'the Content-Security-Policy lets the section and the player load',
+    p.errors.join(' | ').slice(0, 200),
+  );
+  await p.close();
+
+  // a hostile or broken backend answer is ignored by the page
+  const evil = await newPage(390);
+  await evil.evaluateOnNewDocument(() => {
+    sessionStorage.setItem('ccs_popup_shown', '1');
+    sessionStorage.setItem(
+      'ccs_ig_feed',
+      JSON.stringify({
+        t: Date.now(),
+        feed: {
+          enabled: true,
+          heading: 'x',
+          username: 'a"><img src=x onerror=alert(1)>',
+          profile_url: 'javascript:alert(1)',
+          posts: [
+            { kind: 'p', code: 'AbCdEf12', image: 'javascript:alert(1)', caption: '<b>x</b>' },
+            {
+              kind: '../../x',
+              code: 'AbCdEf12',
+              image: 'https://evil.example.com/a.jpg',
+              caption: '',
+            },
+            {
+              kind: 'p',
+              code: 'AbCdEf12',
+              image: 'https://scontent.cdninstagram.com/a.jpg',
+              caption: '<img src=x onerror=alert(1)>',
+            },
+          ],
+        },
+      }),
+    );
+  });
+  await open(evil, '/');
+  await sleep(1500);
+  const bad_ = await evil.evaluate(() => ({
+    cards: document.querySelectorAll('[data-ig-card]').length,
+    injected: !!document.querySelector('[data-ig-track] [onerror], [data-ig-track] b'),
+    images: document.querySelectorAll('[data-ig-track] img').length,
+    handleHidden: document.querySelector('[data-ig-handle]').hidden,
+  }));
+  check(
+    bad_.cards === 1 && bad_.images === 1 && !bad_.injected && bad_.handleHidden,
+    'unsafe values in a feed are ignored: only the one valid post is drawn, captions are plain text, a bad profile link is dropped',
+    JSON.stringify(bad_),
+  );
+  await evil.close();
+
+  // ---- admin: change what is shown
+  await adminPage.select('#ig-count', '3');
+  await adminPage.$eval('#ig-heading', (i) => {
+    i.focus();
+    i.select();
+  });
+  await adminPage.type('#ig-heading', 'Follow us on Instagram');
+  await adminPage.evaluate(() =>
+    [...document.querySelectorAll('button')].find((b) => b.textContent === 'Save').click(),
+  );
+  await adminPage.waitForSelector('.toast-ok');
+  p = await homeSection();
+  st = await sectionState(p);
+  check(
+    st.cards === 3 && st.heading === 'Follow us on Instagram',
+    'a changed count and heading show on the Home page at once, with no rebuild',
+    JSON.stringify(st),
+  );
+  await p.close();
+
+  await adminPage.click('.field-check input');
+  await adminPage.evaluate(() =>
+    [...document.querySelectorAll('button')].find((b) => b.textContent === 'Save').click(),
+  );
+  await adminPage.waitForFunction(() =>
+    /hidden on the Home page/.test(document.querySelector('.toasts')?.textContent ?? ''),
+  );
+  p = await homeSection();
+  check((await sectionState(p)).hidden, 'switching the feed off hides the section again');
+  await p.close();
+
+  // ---- admin: disconnect
+  await adminPage.evaluate(() =>
+    [...document.querySelectorAll('button')].find((b) => b.textContent === 'Disconnect').click(),
+  );
+  await adminPage.waitForSelector('form.inline-form input[type=password]');
+  check(
+    (await api('getInstagram', { token })).connected === false &&
+      (await api('instagramFeed')).posts.length === 0,
+    'disconnecting forgets the account and empties the public feed',
+  );
+  // leave the dev backend as a fresh install would have it
+  await api('saveInstagramSettings', {
+    token,
+    enabled: 'true',
+    count: 8,
+    heading: 'Latest from our Instagram',
+  });
+  check(
+    adminPage.errors.length === 0,
+    'no console errors in the Instagram tab',
+    adminPage.errors.join(' | '),
+  );
+  await adminPage.close();
 }
 
 /* ============================================================ admin responsiveness */
@@ -1324,6 +1945,7 @@ for (const width of [360, 390, 768, 1024, 1280]) {
     'courses',
     'results',
     'reels',
+    'instagram',
     'teachers',
     'resources',
     'exam-updates',

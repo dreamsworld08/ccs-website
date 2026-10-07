@@ -16,6 +16,10 @@
   --color-sky: #ebf6ff;
   --color-sand: #f5e9d8;
   --color-peach: #feeeea;
+  /* The logo's own colours, used for the header / footer wordmark next to the emblem. */
+  --color-brand-navy: #082147;
+  --color-brand-maroon: #6b1623;
+  --color-brand-gold: #c89a44;
 
   /* System fonts only: zero font downloads, instant text rendering, native feel on every phone.
      Headings use each platform's condensed bold (Avenir Next Condensed on iOS/macOS,

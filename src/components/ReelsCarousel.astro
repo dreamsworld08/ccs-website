@@ -20,7 +20,7 @@ const reels = (await getReels())
           <span class="chip chip-kicker mb-4 md:mb-5">Testimonials</span>
           <h2 class="h2">{heading}</h2>
           <p class="mt-3 max-w-[520px] text-[15px] text-muted md:text-[17px]">
-            Real students, real stories. Tap a reel to watch.
+            Real students, real stories. Tap a card to open it.
           </p>
         </div>
         <div class="hidden gap-2 md:flex">
@@ -56,6 +56,7 @@ const reels = (await getReels())
             class="group relative block aspect-[9/16] w-[148px] overflow-hidden rounded-[18px] bg-ink text-left text-white md:w-[210px] md:rounded-[24px] lg:w-[230px]"
             data-reel={r.ref.code}
             data-kind={r.ref.kind}
+            data-preview={r.dummy ? undefined : ''}
             data-name={r.student_name}
             aria-label={`Watch ${r.student_name}'s testimonial${r.label ? `, ${r.label}` : ''}`}
           >
@@ -71,13 +72,24 @@ const reels = (await getReels())
             ) : (
               <span class="absolute inset-0 bg-[linear-gradient(160deg,#0A1B5C,#0042F6_60%,#6047FF)]" />
             )}
+            <span
+              class="absolute inset-0 overflow-hidden"
+              data-reel-preview
+              aria-hidden="true"
+              inert
+            />
             <span class="absolute inset-0 bg-[linear-gradient(to_top,rgb(26_27_31/0.88)_0%,rgb(26_27_31/0.15)_48%,transparent_70%)]" />
             <span class="absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-ink md:right-3 md:top-3">
               <Icon name="instagram" size={16} />
             </span>
-            <span class="absolute left-1/2 top-[42%] inline-flex h-12 w-12 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-ink shadow-lg transition-colors group-hover:bg-primary group-hover:text-white md:h-14 md:w-14">
-              <Icon name="play" size={22} />
-            </span>
+            {r.ref.kind !== 'p' && (
+              <span
+                class="absolute left-1/2 top-[42%] inline-flex h-12 w-12 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-ink shadow-lg transition-colors group-hover:bg-primary group-hover:text-white md:h-14 md:w-14"
+                data-reel-play
+              >
+                <Icon name="play" size={22} />
+              </span>
+            )}
             <span class="absolute inset-x-0 bottom-0 p-3 md:p-4">
               {r.label && (
                 <span class="mono mb-1.5 inline-block rounded-full bg-primary px-2.5 py-1 text-[11px] font-medium md:text-[12px]">
@@ -99,13 +111,13 @@ const reels = (await getReels())
     </div>
 
     <!--
-        One dialog for every reel. Instagram's player (and its scripts and cookies) is only requested
-        when a visitor taps a card. The iframe address is built here from a validated shortcode, and the
-        iframe is sandboxed.
+        One dialog for every reel: tapping a card opens Instagram's player here (with sound). The iframe
+        address is built from a validated shortcode, and the iframe is sandboxed.
+        The cards themselves show a silent preview, see the script below.
       -->
     <dialog id="reel-dialog" class="reel-dialog" aria-labelledby="reel-dialog-title">
       <div class="flex items-center justify-between gap-3 px-4 py-3">
-        <p id="reel-dialog-title" class="h3 min-w-0 truncate !text-[18px]">
+        <p id="reel-dialog-title" data-reel-title class="h3 min-w-0 truncate !text-[18px]">
           Topper testimonial
         </p>
         <button
@@ -135,6 +147,8 @@ const reels = (await getReels())
 )}
 
 <script>
+  import { setupPlayer } from '../scripts/ig-player';
+
   const root = document.querySelector<HTMLElement>('[data-reels-root]');
   const dialog = document.getElementById('reel-dialog') as HTMLDialogElement | null;
   if (root && dialog) {
@@ -152,36 +166,85 @@ const reels = (await getReels())
         track.scrollBy({ left: (step() + 16) * 2, behavior: 'smooth' }),
       );
 
-    const wrap = dialog.querySelector<HTMLElement>('[data-reel-frame]')!;
-    const title = dialog.querySelector<HTMLElement>('#reel-dialog-title')!;
-    const link = dialog.querySelector<HTMLAnchorElement>('[data-reel-link]')!;
+    const openPlayer = setupPlayer(dialog);
 
     track.addEventListener('click', (e) => {
       const card = (e.target as Element).closest<HTMLElement>('[data-reel]');
       if (!card) return;
+      const name = card.dataset.name ?? '';
+      openPlayer(
+        card.dataset.kind ?? 'reel',
+        card.dataset.reel ?? '',
+        name || 'Topper testimonial',
+        `Testimonial by ${name || 'a topper'}`,
+      );
+    });
+    // ---- Previews: the cards show the real reel without a tap -------------------------------------------
+    // Instagram's embed is heavy (about 3 MB for the first one), so nothing is requested until the carousel
+    // is near the screen, and then only for cards that are (nearly) visible. It is skipped completely on
+    // data-saver and slow connections, where the cover picture is shown instead. Previews are display-only
+    // (no pointer events, not focusable): swiping scrolls the carousel and a tap opens the player above.
+    const conn = (
+      navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }
+    ).connection;
+    const lowData = Boolean(conn?.saveData) || /(^|-)(2|3)g/.test(conn?.effectiveType ?? '');
+    const EMBED_WIDTH = 326; // Instagram's embed is laid out for this width
+    const EMBED_HEADER = 54; // its profile bar, cropped away so the card shows the picture itself
+
+    const attach = (card: HTMLElement) => {
+      const holder = card.querySelector<HTMLElement>('[data-reel-preview]');
       const code = card.dataset.reel ?? '';
       const kind = card.dataset.kind ?? 'reel';
+      const width = card.clientWidth;
+      if (!holder || holder.firstChild || !width) return;
       if (!/^[\w-]{5,20}$/.test(code) || !/^(reel|p|tv)$/.test(kind)) return;
+      // A reel is 9:16 like the card, so it fits by width. A photo post is roughly square: scale it to cover the
+      // card (cropping the sides) so Instagram's likes bar below the picture stays out of view.
+      const post = kind === 'p';
+      const scale = (post ? card.clientHeight : width) / EMBED_WIDTH;
+      const shiftX = post ? -(EMBED_WIDTH * scale - width) / 2 : 0;
       const frame = document.createElement('iframe');
       frame.src = `https://www.instagram.com/${kind}/${code}/embed/`;
-      frame.title = `Testimonial by ${card.dataset.name ?? 'a topper'}`;
-      frame.className = 'reel-frame';
-      frame.allow = 'autoplay; encrypted-media; fullscreen; picture-in-picture';
+      frame.title = `Preview of ${card.dataset.name ?? 'a topper'}'s testimonial`;
+      frame.tabIndex = -1;
+      frame.setAttribute('aria-hidden', 'true');
       frame.referrerPolicy = 'strict-origin-when-cross-origin';
       frame.setAttribute(
         'sandbox',
         'allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-presentation',
       );
-      wrap.replaceChildren(frame);
-      title.textContent = card.dataset.name ?? 'Topper testimonial';
-      link.href = `https://www.instagram.com/${kind}/${code}/`;
-      dialog.showModal();
-    });
-    // Closing removes the player, which stops playback and any network activity.
-    dialog.addEventListener('close', () => wrap.replaceChildren());
-    dialog.addEventListener('click', (e) => {
-      if (e.target === dialog) dialog.close();
-    });
-    dialog.querySelector('[data-reel-close]')?.addEventListener('click', () => dialog.close());
+      frame.style.cssText =
+        `position:absolute;left:0;top:0;width:${EMBED_WIDTH}px;max-width:none;height:800px;border:0;` +
+        `pointer-events:none;opacity:0;transition:opacity .3s;transform-origin:0 0;` +
+        `transform:translate(${shiftX}px,${-EMBED_HEADER * scale}px) scale(${scale})`;
+      frame.addEventListener('load', () => (frame.style.opacity = '1'), { once: true });
+      holder.appendChild(frame);
+    };
+
+    const cards = [...track.querySelectorAll<HTMLElement>('[data-reel][data-preview]')];
+    if (cards.length && !lowData && 'IntersectionObserver' in window) {
+      const start = () => {
+        const near = new IntersectionObserver(
+          (entries) =>
+            entries.forEach((en) => {
+              if (!en.isIntersecting) return;
+              near.unobserve(en.target);
+              attach(en.target as HTMLElement);
+            }),
+          { root: track, rootMargin: '0px 260px' }, // a card ahead is ready by the time it is swiped in
+        );
+        cards.forEach((c) => near.observe(c));
+      };
+      // First wait until the whole carousel is within a screen of the viewport.
+      const section = new IntersectionObserver(
+        ([en]) => {
+          if (!en.isIntersecting) return;
+          section.disconnect();
+          start();
+        },
+        { rootMargin: '300px 0px' },
+      );
+      section.observe(track);
+    }
   }
 </script>

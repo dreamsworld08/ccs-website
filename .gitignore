@@ -10,3 +10,4 @@ dist/
 dev-server/data/enquiries.json
 dev-server/data/admins.json
 dev-server/data/.secret
+dev-server/data/instagram.json

@@ -57,6 +57,7 @@ export default [
         URLSearchParams_: 'readonly',
         crypto: 'readonly',
         AbortController: 'readonly',
+        AbortSignal: 'readonly',
         structuredClone: 'readonly',
         atob: 'readonly',
         btoa: 'readonly',

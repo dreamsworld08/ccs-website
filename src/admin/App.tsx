@@ -13,6 +13,7 @@ import { Toasts, toast } from './ui';
 import EnquiriesTab from './tabs/EnquiriesTab';
 import ContentTab from './tabs/ContentTab';
 import HomeTab from './tabs/HomeTab';
+import InstagramTab from './tabs/InstagramTab';
 import LandingPagesTab from './tabs/LandingPagesTab';
 import SettingsTab from './tabs/SettingsTab';
 import { IS_LOCAL_BACKEND } from '../config/backend';
@@ -23,6 +24,7 @@ const TABS = [
   ['courses', 'Courses'],
   ['results', 'Results'],
   ['reels', 'Reels'],
+  ['instagram', 'Instagram'],
   ['teachers', 'Teachers'],
   ['resources', 'Free Resources'],
   ['exam-updates', 'Exam Updates'],
@@ -110,7 +112,7 @@ export default function App() {
 
   const showTests = Boolean(settings?.show_free_tests);
   const tabs = showTests
-    ? [...TABS.slice(0, 8), ['tests', 'Free Tests'] as const, ...TABS.slice(8)]
+    ? [...TABS.slice(0, 9), ['tests', 'Free Tests'] as const, ...TABS.slice(9)]
     : [...TABS];
   const active = tabs.some(([id]) => id === tab) ? tab : 'enquiries';
 
@@ -118,7 +120,7 @@ export default function App() {
     <div class="admin">
       <header class="topbar">
         <div class="brand">
-          <img src={`${siteBase()}/logo.svg`} alt="CCS" height="28" />
+          <img src={`${siteBase()}/brand/logo-mark.webp`} alt="CCS" width="34" height="34" />
           <span class="brand-sub">Admin</span>
         </div>
         <nav class="tabs" aria-label="Admin sections">
@@ -154,6 +156,7 @@ export default function App() {
         {active === 'courses' && <ContentTab def={COURSES} />}
         {active === 'results' && <ContentTab def={RESULTS} />}
         {active === 'reels' && <ContentTab def={REELS} />}
+        {active === 'instagram' && <InstagramTab />}
         {active === 'teachers' && <ContentTab def={TEACHERS} />}
         {active === 'resources' && <ContentTab def={RESOURCES} />}
         {active === 'exam-updates' && <ContentTab def={EXAM_UPDATES} />}
@@ -206,7 +209,13 @@ function Login({ onLogin }: { onLogin: (s: Session) => void }) {
   return (
     <div class="login-wrap">
       <form class="login" onSubmit={submit}>
-        <img src={`${siteBase()}/logo.svg`} alt="Chandigarh Civil Services" height="34" />
+        <img
+          class="login-logo"
+          src={`${siteBase()}/brand/logo-full.webp`}
+          alt="Chandigarh Civil Services"
+          width="120"
+          height="120"
+        />
         <h1>Admin login</h1>
         <label>
           Login
@@ -277,7 +286,13 @@ function ForcePasswordChange({
   return (
     <div class="login-wrap">
       <form class="login" onSubmit={submit}>
-        <img src={`${siteBase()}/logo.svg`} alt="Chandigarh Civil Services" height="34" />
+        <img
+          class="login-logo"
+          src={`${siteBase()}/brand/logo-full.webp`}
+          alt="Chandigarh Civil Services"
+          width="120"
+          height="120"
+        />
         <h1>Choose a new password</h1>
         <p class="help">
           Hello {name}. For security you must replace the temporary password before you can
