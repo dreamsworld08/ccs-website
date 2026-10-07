@@ -208,6 +208,7 @@ globalThis.ContentService = {
     },
   }),
 };
+const sleeps = []; // every Utilities.sleep(ms) the script asks for (the slow-down after many wrong passwords)
 globalThis.Utilities = {
   DigestAlgorithm: { SHA_256: 'sha256' },
   Charset: { UTF_8: 'utf8' },
@@ -225,6 +226,7 @@ globalThis.Utilities = {
   },
   newBlob: (bytes) => ({ getDataAsString: () => unsigned(bytes).toString('utf8') }),
   getUuid: () => randomUUID(),
+  sleep: (ms) => void sleeps.push(ms),
   formatDate: (d) => {
     const s = d.toLocaleString('sv-SE', { timeZone: 'Asia/Kolkata' }).replace(' ', 'T');
     return `${s}+05:30`;
@@ -457,10 +459,41 @@ const realNow = Date.now;
 Date.now = () => realNow() + 13 * 3600 * 1000;
 check(call({ action: 'listEnquiries', token: T }).code === 'auth', 'token expires after 12 hours');
 Date.now = realNow;
-for (let i = 0; i < 5; i++) call({ action: 'login', email: 'someone', password: 'bad' });
+// NO LOCK-OUT: wrong passwords never block anyone, not even a real admin (Google's slow answers make people retry).
+sleeps.length = 0;
+for (let i = 0; i < 10; i++)
+  call({ action: 'login', email: 'admin.ccs.chandigar', password: `wrong-guess-${i}` });
 check(
-  call({ action: 'login', email: 'someone', password: 'bad' }).code === 'locked',
-  'locks out after 5 failed logins',
+  sleeps.length === 0,
+  'up to 10 wrong passwords are answered at once (an honest mistake or a few retries costs nothing)',
+);
+const afterMany = call({ action: 'login', email: 'admin.ccs.chandigar', password: TEST_PW });
+check(
+  afterMany.ok && afterMany.code !== 'locked',
+  'the right password still works after many wrong ones: there is no lock-out',
+);
+for (let i = 0; i < 6; i++)
+  call({ action: 'login', email: 'someone.else', password: `wrong-guess-${i}` });
+for (let i = 0; i < 12; i++)
+  call({ action: 'login', email: 'someone.else', password: `more-wrong-${i}` });
+check(
+  call({ action: 'login', email: 'someone.else', password: 'bad' }).code !== 'locked' &&
+    sleeps.length > 0 &&
+    sleeps.every((ms) => ms > 0 && ms <= 5000),
+  'only a slow-down applies after more than 10 recent wrong attempts (each answered after a pause of at most 5 seconds)',
+  JSON.stringify(sleeps.slice(0, 4)),
+);
+check(
+  sleeps.at(-1) > sleeps[0],
+  'the pause grows with each further wrong attempt',
+  JSON.stringify(sleeps.slice(0, 4)),
+);
+// the pause only slows guessing: the correct password is never delayed or refused
+sleeps.length = 0;
+check(
+  call({ action: 'login', email: 'admin.ccs.chandigar', password: TEST_PW }).ok &&
+    sleeps.length === 0,
+  'signing in with the right password is never slowed down',
 );
 
 console.log('\nsubmitEnquiry');
@@ -1303,6 +1336,8 @@ console.log('\nchange my password (private, and it ends every other session)');
   check(!change({ old_password: 'wrong-current-pw' }).ok, 'needs the current password');
   for (const [label, patch] of [
     ['too short', { new_password: 'Ab1xyz' }],
+    ['eleven characters', { new_password: 'Abcdefgh123' }],
+    ['one character repeated', { new_password: '111111111111' }],
     ['all letters', { new_password: 'OnlyLettersHere' }],
     ['all digits', { new_password: '1234567890123' }],
     ['the same as the current one', { new_password: TEST_PW }],
@@ -1367,24 +1402,24 @@ console.log('\nchange my password (private, and it ends every other session)');
   );
   CONFIG.ADMINS = kept;
 
-  // Wrong "current password" guesses count towards the same lock-out as sign-in.
+  // Wrong "current password" guesses never lock anything either; they only count towards the same slow-down.
   const b = call({ action: 'login', email: 'staff.one', password: STAFF_PW });
-  for (let i = 0; i < 5; i++)
+  for (let i = 0; i < 8; i++)
     call({
       action: 'changePassword',
       token: b.token,
       old_password: 'guess-' + i,
       new_password: 'Another-pass-2024',
     });
+  const stillWorks = call({
+    action: 'changePassword',
+    token: b.token,
+    old_password: STAFF_PW,
+    new_password: 'Another-pass-2024',
+  });
   check(
-    call({
-      action: 'changePassword',
-      token: b.token,
-      old_password: STAFF_PW,
-      new_password: 'Another-pass-2024',
-    }).code === 'locked' &&
-      call({ action: 'login', email: 'staff.one', password: STAFF_PW }).code === 'locked',
-    'five wrong "current password" guesses lock that login, like five wrong sign-ins',
+    stillWorks.ok && stillWorks.code !== 'locked',
+    'many wrong "current password" guesses do not lock the change-password form or the login',
   );
 }
 

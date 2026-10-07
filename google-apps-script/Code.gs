@@ -256,11 +256,12 @@ function updateEnquiry_(p, me) {
   });
 }
 
-/** Rules for a password an admin chooses (it is stored privately, never in the repository). */
+/** Rules for a password an admin chooses (stored privately, never in the repository). There is no lock-out, so it must be long. */
 function passwordProblem_(pw) {
-  if (typeof pw !== 'string' || pw.length < 10) return 'Password must be at least 10 characters.';
+  if (typeof pw !== 'string' || pw.length < 12) return 'Password must be at least 12 characters.';
   if (pw.length > 100) return 'Password is too long.';
   if (!/[A-Za-z]/.test(pw) || !/\d/.test(pw)) return 'Password needs at least one letter and one number.';
+  if (/^(.)\1+$/.test(pw)) return 'Choose a password that is not one character repeated.';
   return '';
 }
 
@@ -298,19 +299,25 @@ function makeToken_(login, cred) {
   return payload + '.' + hmacHex_(payload);
 }
 
-/** Five wrong passwords (at sign-in or when changing it) lock that login for 15 minutes. */
+/**
+ * NO LOCK-OUT: a wrong password never blocks anyone. (Google's web-app answers are sometimes slow, which makes people
+ * retry, and a lock-out then shut the real admin out.) Instead, once a login has had more than THROTTLE_AFTER wrong
+ * attempts in the last 15 minutes, every further wrong attempt is answered after a pause that grows to 5 seconds. That
+ * keeps online guessing slow without ever refusing the right password.
+ */
+var THROTTLE_AFTER = 10;
 function failKey_(login) { return 'fail:' + sha256Hex_(String(login).toLowerCase()); }
-function isLocked_(login) { return Number(CacheService.getScriptCache().get(failKey_(login)) || 0) >= 5; }
 function noteFail_(login) {
   var cache = CacheService.getScriptCache();
-  cache.put(failKey_(login), String(Number(cache.get(failKey_(login)) || 0) + 1), 900);
+  var count = Number(cache.get(failKey_(login)) || 0) + 1;
+  cache.put(failKey_(login), String(count), 900);
+  if (count > THROTTLE_AFTER) Utilities.sleep(Math.min(5000, (count - THROTTLE_AFTER) * 500));
 }
 
 function login_(p) {
   var email = clip_(p.email, 120).toLowerCase();
   var password = String(p.password || '');
   if (!email || !password) return { ok: false, error: 'Enter your login and password.' };
-  if (isLocked_(email)) return { ok: false, code: 'locked', error: 'Too many failed attempts. Try again in 15 minutes.' };
   var admin = findAdmin_(email);
   var cred = admin && credentialFor_(admin);
   var ok = admin && safeEqual_(sha256Hex_(cred.salt + password), cred.hash);
@@ -340,7 +347,6 @@ function authenticate_(token) {
 }
 
 function changePassword_(p, me) {
-  if (isLocked_(me.login)) return { ok: false, code: 'locked', error: 'Too many failed attempts. Try again in 15 minutes.' };
   return withLock_(function () {
     var cred = credentialFor_(me);
     var old = String(p.old_password || '');

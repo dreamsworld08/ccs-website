@@ -171,7 +171,7 @@ Every landing page uses the same fixed layout.
 - Phone, WhatsApp, email, address and social links shown across the site.
 - **Year-of-attempt choices** in the enquiry form (add or remove years).
 - Free Tests is a feature your developer switches on when the tests are ready; it is not a setting here.
-- **Change my password:** type your current password and a new one twice (at least 10 characters, with a letter and a
+- **Change my password:** type your current password and a new one twice (at least 12 characters, with a letter and a
   number, and not your login). Everyone else signed in with the old password is signed out; you stay signed in.
 - **Who can sign in** is fixed by your developer and is not managed here.
 
@@ -190,12 +190,12 @@ Every landing page uses the same fixed layout.
 
 ## If something goes wrong
 
-| What you see                                  | What to do                                                                           |
-| --------------------------------------------- | ------------------------------------------------------------------------------------ |
-| "Session expired"                             | Sign in again.                                                                       |
-| "Too many failed attempts"                    | Wait 15 minutes, then try again.                                                     |
-| An image will not upload                      | Use a JPG, PNG or WebP picture. Use Chrome, Edge or Firefox.                         |
-| "... is too long" or "... is required"        | Shorten the text or fill the field. The counters beside each box show the limit.     |
-| "This page cannot be deleted"                 | The Home page and Settings are fixed pages: edit them, they cannot be removed.       |
-| A PDF is too large                            | Keep it under 5 MB, or put it on Google Drive and paste the link.                    |
-| The change is not on the site after 5 minutes | Tell your developer. The site may have rejected the change and kept the old version. |
+| What you see                                  | What to do                                                                                                                       |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| "Session expired"                             | Sign in again.                                                                                                                   |
+| Signing in is slow, or "The server is busy"   | Wait: Google's server is sometimes slow to answer (up to a minute). The page retries by itself, so do not click again and again. |
+| An image will not upload                      | Use a JPG, PNG or WebP picture. Use Chrome, Edge or Firefox.                                                                     |
+| "... is too long" or "... is required"        | Shorten the text or fill the field. The counters beside each box show the limit.                                                 |
+| "This page cannot be deleted"                 | The Home page and Settings are fixed pages: edit them, they cannot be removed.                                                   |
+| A PDF is too large                            | Keep it under 5 MB, or put it on Google Drive and paste the link.                                                                |
+| The change is not on the site after 5 minutes | Tell your developer. The site may have rejected the change and kept the old version.                                             |

@@ -15,7 +15,7 @@ const CHROME =
   process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const API = process.env.API_URL || 'http://localhost:8787';
 const LOGIN = 'admin.ccs.chandigar';
-const PASSWORD = process.env.DEV_ADMIN_PASSWORD || 'Admin@12345';
+const PASSWORD = process.env.DEV_ADMIN_PASSWORD || 'Admin@123456';
 const SHOTS = process.env.SHOTS || '';
 
 let pass = 0;
@@ -2215,6 +2215,136 @@ console.log('\nAdmin hardening: fixed logins, change my password, anti-framing')
   await host.close();
 }
 
+/* ============================================================ slow or failing Google answers */
+console.log(
+  "\nGoogle's slow / failing answers: safe requests retry by themselves, writes never do",
+);
+{
+  const GOOGLE_404 = '<html><body>Sorry, unable to open the file at present.</body></html>';
+  const isApi = (r) => r.method() === 'POST' && r.url().startsWith(API);
+  const actionOf = (r) => new URLSearchParams(r.postData() ?? '').get('action');
+
+  // 1. sign-in: the first answer is Google's 404 page ("Unexpected response"); the page retries and signs in
+  {
+    const page = await newPage(1280, false);
+    const seen = [];
+    await page.setRequestInterception(true);
+    page.on('request', (r) => {
+      if (isApi(r) && actionOf(r) === 'login') {
+        seen.push('login');
+        if (seen.length === 1)
+          return r.respond({ status: 404, contentType: 'text/html', body: GOOGLE_404 });
+      }
+      r.continue();
+    });
+    await open(page, '/admin/');
+    await page.type('form.login input[type=text]', LOGIN);
+    await page.type('form.login input[type=password]', PASSWORD);
+    await page.click('form.login button[type=submit]');
+    await page.waitForSelector('.topbar', { timeout: 20000 });
+    check(
+      seen.length === 2 && !(await page.$('.login-error')),
+      "sign-in survives Google's 404 page: it retries by itself and no error is shown",
+      `login requests: ${seen.length}`,
+    );
+    await page.close();
+  }
+
+  // 2. sign-in: a slow answer shows a "still working" note instead of looking stuck, then succeeds
+  {
+    const page = await newPage(1280, false);
+    await page.setRequestInterception(true);
+    page.on('request', async (r) => {
+      if (isApi(r) && actionOf(r) === 'login') await sleep(5500);
+      r.continue().catch(() => {});
+    });
+    await open(page, '/admin/');
+    await page.type('form.login input[type=text]', LOGIN);
+    await page.type('form.login input[type=password]', PASSWORD);
+    await page.click('form.login button[type=submit]');
+    await page.waitForSelector('.login .help[role=status]', { timeout: 8000 });
+    ok('a slow sign-in says "Still working" so nobody keeps clicking');
+    await page.waitForSelector('.topbar', { timeout: 20000 });
+    ok('...and then signs in');
+    await page.close();
+  }
+
+  // 3. enquiry: the answer is lost AFTER the server saved it. The retry must not create a second enquiry.
+  {
+    const num = freshMobile();
+    const page = await newPage(390);
+    let posts = 0;
+    await page.setRequestInterception(true);
+    page.on('request', async (r) => {
+      if (isApi(r) && actionOf(r) === 'submitEnquiry') {
+        posts++;
+        if (posts === 1) {
+          // the server really receives it (so the row is saved) but the browser gets Google's error page
+          await fetch(API, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: r.postData(),
+          });
+          return r.respond({ status: 404, contentType: 'text/html', body: GOOGLE_404 });
+        }
+      }
+      r.continue().catch(() => {});
+    });
+    await open(page, '/');
+    await sleep(400);
+    await click(page, 'header [data-open-enquiry]');
+    await page.waitForSelector('dialog[open] form');
+    await page.type('dialog[open] input[name=name]', 'Lost Answer Test');
+    await page.type('dialog[open] input[name=mobile]', num);
+    await page.select('dialog[open] select[name=exam]', 'Other');
+    await page.click('dialog[open] button[type=submit]');
+    await page.waitForSelector('dialog[open] [role=status]', { timeout: 20000 });
+    const rows = (await enquiryRows()).filter((r) => r.mobile === num);
+    check(
+      posts === 2 && rows.length === 1,
+      'a lost answer is retried and shown as success, with exactly ONE enquiry saved (no duplicate)',
+      `posts=${posts} rows=${rows.length}`,
+    );
+    await page.close();
+  }
+
+  // 4. a write is never repeated by the browser on its own
+  {
+    const page = await newPage(1280, false);
+    let writes = 0;
+    await open(page, '/admin/');
+    await page.type('form.login input[type=text]', LOGIN);
+    await page.type('form.login input[type=password]', PASSWORD);
+    await page.click('form.login button[type=submit]');
+    await page.waitForSelector('table.table-enq tbody tr');
+    await page.setRequestInterception(true);
+    page.on('request', (r) => {
+      if (isApi(r) && actionOf(r) === 'updateEnquiry') {
+        writes++;
+        return r.respond({ status: 404, contentType: 'text/html', body: GOOGLE_404 });
+      }
+      r.continue().catch(() => {});
+    });
+    const before = await page.$eval('table.table-enq tbody tr select', (el) => el.value);
+    await page.select(
+      'table.table-enq tbody tr select',
+      before === 'Resolved' ? 'Open' : 'Resolved',
+    );
+    await page.waitForFunction(() =>
+      [...document.querySelectorAll('.toast')].some((t) =>
+        /busy|did not answer|Unexpected/i.test(t.textContent),
+      ),
+    );
+    await sleep(2500); // long enough for any (wrong) automatic retry to have happened
+    check(
+      writes === 1,
+      'a failed write (status change) is reported once and never repeated automatically',
+      `update requests: ${writes}`,
+    );
+    await page.close();
+  }
+}
+
 /* ============================================================ security edge cases */
 console.log('\nSecurity edge cases (API)');
 {
@@ -2316,10 +2446,19 @@ console.log('\nSecurity edge cases (API)');
     ).ok,
     'server validates the mobile number format',
   );
-  const lock = [];
-  for (let i = 0; i < 6; i++)
-    lock.push((await api('login', { email: 'lockout.test', password: 'nope' })).code);
-  check(lock[5] === 'locked', 'login locks after 5 failed attempts');
+  // No lock-out: wrong passwords never block anyone (slow Google answers make people retry).
+  const answers = [];
+  for (let i = 0; i < 8; i++)
+    answers.push((await api('login', { email: LOGIN, password: `wrong-${i}` })).code ?? 'wrong');
+  check(
+    answers.every((c) => c === 'wrong'),
+    'wrong passwords are answered normally every time: no lock-out',
+    answers.join(','),
+  );
+  check(
+    (await api('login', { email: LOGIN, password: PASSWORD })).ok === true,
+    'the right password still works straight after many wrong ones',
+  );
 }
 
 await browser.close();

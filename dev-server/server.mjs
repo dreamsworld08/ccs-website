@@ -135,7 +135,7 @@ const ENQ_FILE = join(DATA, 'enquiries.json');
 // throw-away login. Production has its own fixed logins and no default password, see SETUP.md.
 const DEV_ADMINS = (() => {
   const salt = randomBytes(16).toString('hex');
-  const password = process.env.DEV_ADMIN_PASSWORD || 'Admin@12345';
+  const password = process.env.DEV_ADMIN_PASSWORD || 'Admin@123456';
   return [
     {
       email: 'admin.ccs.chandigar',
@@ -235,17 +235,20 @@ function seedEnquiries() {
 
 /* ------------------------------------------------------------------ admins & sessions */
 const failed = new Map(); // email -> [timestamps]
-function lockedOut(email) {
+/** No lock-out (see Code.gs): after more than 10 wrong attempts in 15 minutes each further one is answered slowly. */
+async function noteFail(email) {
   const now = Date.now();
-  const list = (failed.get(email) ?? []).filter((t) => now - t < 15 * 60 * 1000);
+  const list = [...(failed.get(email) ?? []).filter((t) => now - t < 15 * 60 * 1000), now];
   failed.set(email, list);
-  return list.length >= 5;
+  if (list.length > 10)
+    await new Promise((r) => setTimeout(r, Math.min(5000, (list.length - 10) * 500)));
 }
 function passwordProblem(pw) {
-  if (typeof pw !== 'string' || pw.length < 10) return 'Password must be at least 10 characters.';
+  if (typeof pw !== 'string' || pw.length < 12) return 'Password must be at least 12 characters.';
   if (pw.length > 100) return 'Password is too long.';
   if (!/[A-Za-z]/.test(pw) || !/\d/.test(pw))
     return 'Password needs at least one letter and one number.';
+  if (/^(.)\1+$/.test(pw)) return 'Choose a password that is not one character repeated.';
   return '';
 }
 function makeToken(email, cred) {
@@ -674,17 +677,11 @@ async function handle(p) {
   if (action === 'login') {
     const email = clip(p.email, 120).toLowerCase();
     if (!email || !p.password) return { ok: false, error: 'Enter your login and password.' };
-    if (lockedOut(email))
-      return {
-        ok: false,
-        code: 'locked',
-        error: 'Too many failed attempts. Try again in 15 minutes.',
-      };
     const admin = DEV_ADMINS.find((a) => a.email === email);
     const cred = admin && credFor(admin);
     const ok = admin && safeEqual(sha256(cred.salt + String(p.password)), cred.password_hash);
     if (!ok) {
-      failed.get(email).push(Date.now());
+      await noteFail(email);
       return { ok: false, error: 'Incorrect login or password.' };
     }
     failed.delete(email);
@@ -806,16 +803,10 @@ async function handle(p) {
     }
 
     case 'changePassword': {
-      if (lockedOut(me.email))
-        return {
-          ok: false,
-          code: 'locked',
-          error: 'Too many failed attempts. Try again in 15 minutes.',
-        };
       const cred = credFor(me);
       const old = String(p.old_password || '');
       if (!safeEqual(sha256(cred.salt + old), cred.password_hash)) {
-        (failed.get(me.email) ?? failed.set(me.email, []).get(me.email)).push(Date.now());
+        await noteFail(me.email);
         return { ok: false, error: 'Current password is incorrect.' };
       }
       const next = String(p.new_password || '');

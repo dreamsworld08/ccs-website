@@ -153,10 +153,14 @@ function Login({ onLogin }: { onLogin: (s: Session) => void }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [slow, setSlow] = useState(false);
 
   async function submit(e: Event) {
     e.preventDefault();
     setBusy(true);
+    setSlow(false);
+    // Google's servers are sometimes slow to answer: say so instead of leaving the page looking stuck.
+    const waiting = window.setTimeout(() => setSlow(true), 4000);
     setError('');
     const res = await call<{
       token: string;
@@ -164,7 +168,9 @@ function Login({ onLogin }: { onLogin: (s: Session) => void }) {
       email: string;
       expires_in: number;
     }>('login', { email, password });
+    window.clearTimeout(waiting);
     setBusy(false);
+    setSlow(false);
     if (!res.ok) {
       setPassword('');
       return void setError(
@@ -225,6 +231,12 @@ function Login({ onLogin }: { onLogin: (s: Session) => void }) {
         <button class="btn btn-primary" type="submit" disabled={busy}>
           {busy ? 'Signing in…' : 'Sign in'}
         </button>
+        {slow && (
+          <p class="help" role="status">
+            Still working: Google&rsquo;s server is slow to answer right now. Please wait, it
+            retries by itself. You do not need to click again.
+          </p>
+        )}
         <p class="help">
           Staff only. Content saved here goes live on the website in about 2 minutes.
         </p>

@@ -163,7 +163,7 @@ function ChangePassword() {
           <input
             type="password"
             value={newPw}
-            minLength={10}
+            minLength={12}
             maxLength={100}
             required
             autocomplete="new-password"
@@ -175,7 +175,7 @@ function ChangePassword() {
           <input
             type="password"
             value={again}
-            minLength={10}
+            minLength={12}
             maxLength={100}
             required
             autocomplete="new-password"
@@ -186,7 +186,7 @@ function ChangePassword() {
           {busy ? 'Saving…' : 'Change password'}
         </button>
         <p class="help">
-          At least 10 characters with a letter and a number, and not your login. Longer is better: a
+          At least 12 characters with a letter and a number, and not your login. Longer is better: a
           few random words work well. Use a password you do not use anywhere else.
         </p>
       </form>
