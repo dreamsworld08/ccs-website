@@ -631,6 +631,48 @@ console.log('\nHome hero: clean 16:9 video, search bar on the bottom edge');
   await page.close();
 }
 
+// The hero panel must span the whole page width and stay lined up with the search bar on any window shape,
+// including a wide, short desktop window (where a height cap once shrank it and left a gap on the right).
+console.log('\nHome hero: full width and aligned on every screen shape');
+for (const [w, h, mobile] of [
+  [1410, 778, false],
+  [1920, 950, false],
+  [2560, 1300, false],
+  [1024, 600, false],
+  [768, 1024, true],
+  [844, 390, true],
+  [360, 640, true],
+]) {
+  const page = await newPage(w, mobile);
+  await page.setViewport({ width: w, height: h, isMobile: mobile, hasTouch: mobile });
+  await open(page, '/');
+  const g = await page.evaluate(() => {
+    const vw = document.documentElement.clientWidth;
+    const panel = document.querySelector('[data-hero] .panel').getBoundingClientRect();
+    const bar = document.querySelector('[data-hero] form[role=search]').getBoundingClientRect();
+    return {
+      vw,
+      left: Math.round(panel.left),
+      right: Math.round(vw - panel.right),
+      barOff: Math.round((bar.left + bar.right) / 2 - (panel.left + panel.right) / 2),
+      cropPct: Math.max(0, Math.round((1 - panel.height / ((panel.width * 9) / 16)) * 100)),
+      scrollW: document.documentElement.scrollWidth,
+    };
+  });
+  check(
+    Math.abs(g.left - g.right) <= 1 && g.left <= 10 && g.scrollW <= g.vw,
+    `${w}x${h}: the hero spans the whole page width (no gap on either side)`,
+    JSON.stringify(g),
+  );
+  check(
+    Math.abs(g.barOff) <= 1,
+    `${w}x${h}: the search bar is centred on the hero`,
+    JSON.stringify(g),
+  );
+  check(g.cropPct <= 12, `${w}x${h}: at most about 11% of the video is trimmed`, JSON.stringify(g));
+  await page.close();
+}
+
 {
   const page = await newPage(390);
   await open(page, '/');

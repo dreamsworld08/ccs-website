@@ -36,9 +36,14 @@ const placeholder = home.hero_search_placeholder || 'Search resources, updates a
     <div
       class:list={[
         'panel on-dark bg-[linear-gradient(150deg,#0A1B5C_0%,#0042F6_58%,#6047FF_130%)] text-white',
-        // The whole video is visible (16:9); on very wide screens it is trimmed so it still fits one screen.
+        // Always the full width of the page, 16:9 (so a phone shows the whole video). On a wide, short screen the
+        // height is capped to roughly one screen and the video covers the panel, trimming a little off the top
+        // and bottom, never more than about 11%. `w-full` matters: without a definite width the browser would
+        // shrink the panel to keep 16:9 under the cap and leave a gap beside it.
         // No min-height here: with an aspect ratio it would widen the panel past a narrow phone's screen.
-        showText ? 'min-h-[560px] md:min-h-[680px]' : 'aspect-video max-h-[calc(100svh-6rem)]',
+        showText
+          ? 'min-h-[560px] md:min-h-[680px]'
+          : 'aspect-video w-full max-h-[max(calc(100svh-6rem),50vw)]',
       ]}
     >
       <div class="absolute inset-0 [container-type:size]" data-hero-media>
@@ -50,12 +55,12 @@ const placeholder = home.hero_search_placeholder || 'Search resources, updates a
             height={900}
             sizes="100vw"
             priority
-            class="absolute inset-0 h-full w-full object-cover"
+            class="absolute inset-0 h-full w-full object-cover object-[50%_70%]"
           />
         )}
         {mp4 && (
           <video
-            class="absolute inset-0 h-full w-full object-cover"
+            class="absolute inset-0 h-full w-full object-cover object-[50%_70%]"
             muted
             loop
             playsinline
@@ -192,9 +197,9 @@ const placeholder = home.hero_search_placeholder || 'Search resources, updates a
           frame.allow = 'autoplay; encrypted-media; picture-in-picture';
           frame.tabIndex = -1;
           frame.setAttribute('aria-hidden', 'true');
-          // Cover the panel like object-fit: cover (container query units).
+          // Cover the panel like object-fit: cover (container query units), trimming from the top first (as object-position: 50% 70%).
           frame.style.cssText =
-            'position:absolute;top:50%;left:50%;border:0;pointer-events:none;transform:translate(-50%,-50%);width:max(100cqw,177.78cqh);height:max(100cqh,56.25cqw)';
+            'position:absolute;top:70%;left:50%;border:0;pointer-events:none;transform:translate(-50%,-70%);width:max(100cqw,177.78cqh);height:max(100cqh,56.25cqw)';
           media.appendChild(frame);
         }
         frame.src = ytSrc(mute);
