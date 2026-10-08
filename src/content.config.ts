@@ -32,6 +32,8 @@ const home = defineCollection({
   schema: z.object({
     hero_video_url: z.string().default(''),
     hero_poster: z.string().default(''),
+    // 'Automatic' | 'Always show' | 'Always hide', see src/lib/hero.ts (kept a plain string: one odd value must never break the build)
+    hero_text: z.string().default('Automatic'),
     hero_kicker: z.string().default(''),
     hero_headline: z.string().default(''),
     hero_subtext: z.string().default(''),

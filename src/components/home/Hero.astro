@@ -3,6 +3,7 @@ import Icon from '../Icon.astro';
 import Img from '../Img.astro';
 import HeroSearch from '../../islands/HeroSearch';
 import { withBase, safeHref, youtubeId, isMp4 } from '../../lib/site';
+import { heroShowsText } from '../../lib/hero';
 import type { getHome } from '../../lib/site';
 
 interface Props {
@@ -13,17 +14,18 @@ const yt = youtubeId(home.hero_video_url);
 const mp4 = !yt && isMp4(safeHref(home.hero_video_url)) ? safeHref(home.hero_video_url) : '';
 const hasVideo = Boolean(yt || mp4);
 const poster = home.hero_poster ? withBase(home.hero_poster) : '';
-// With a video or a poster the hero shows ONLY that, clean and un-tinted. The text and buttons from the admin
-// are still saved; they are drawn only when there is nothing else to show, so the panel is never empty.
-const showText = !hasVideo && !poster;
+// A video plays clean (no text, no tint); a picture-only hero carries the text on a dark tint. The admin can force the
+// text on or off (Home Page > Hero > "Text on the hero"); see src/lib/hero.ts. The text is always saved in the admin.
+const showText = heroShowsText(home.hero_text, hasVideo);
 const btn2 = safeHref(home.hero_btn2_link, withBase('/courses'));
 const placeholder = home.hero_search_placeholder || 'Search resources, updates and results';
 ---
 
 <!--
-  Layout: the video (or poster) fills a 16:9 panel with nothing on top of it (no text, no tint); the search
-  bar is centred on the panel's bottom edge (half over the video, half over the page); the stat tiles follow.
-  The headline is kept as a visually hidden <h1> for search engines and screen readers.
+  Layout: without text the video (or poster) fills a 16:9 panel with nothing on top of it (no text, no tint);
+  with text the panel is taller and the text sits on a dark tint. The search bar is centred on the panel's bottom
+  edge (half over the media, half over the page); the stat tiles follow.
+  Without text the headline is kept as a visually hidden <h1> for search engines and screen readers.
   The outer section is not clipped, so the search bar and its dropdown can overlap the panel's edge.
 -->
 <section

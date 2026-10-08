@@ -138,9 +138,17 @@ developer clears unused files, so do not upload anything that must never be publ
 ## Change the Home page video (and other Home content)
 
 1. **Home Page.** The layout is fixed; only text, pictures and the video can be changed.
-2. The top of the Home page (the **hero**) shows your video, full width and clear, with nothing written on top of it. Under **Hero**, paste a
+2. The top of the Home page (the **hero**) shows your video, full width and clear. Under **Hero**, paste a
    **YouTube link** in **Video link**. A preview appears so you can check it.
-3. The **Welcome line**, **Headline**, sub-text and two buttons are kept, but they are not shown while a video or poster is set (they appear only if you remove both). Please still fill in the **Headline**: search engines read it.
+3. The **Welcome line**, **Headline**, sub-text and two buttons are controlled by **Text on the hero**:
+   - **Automatic** (recommended): no text while a video is set, so the video is clear; if there is only a **Poster
+     image** (or nothing), the text is shown on top of it.
+   - **Always show**: the text is shown even over a video.
+   - **Always hide**: the text is never shown.
+
+   Please still fill in the **Headline** even when it is hidden: search engines read it. Changing this setting needs
+   one **Save changes**; it is live in 1-2 minutes like everything else.
+
 4. The **search bar** sits at the bottom of the hero. Change its **hint text** and the **Popular searches**
    (up to 6 quick-tap words shown when someone clicks the bar). Visitors can search free resources, exam updates
    and results there. You do not need to do anything to keep it up to date: it finds whatever you publish.

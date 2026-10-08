@@ -71,6 +71,15 @@
         "label": "Poster image (shown before the video loads, and on phones)",
         "type": "image"
       },
+      "hero_text": {
+        "label": "Text on the hero (welcome line, headline, sub-text and buttons)",
+        "type": "select",
+        "options": [
+          "Automatic",
+          "Always show",
+          "Always hide"
+        ]
+      },
       "hero_kicker": {
         "label": "Welcome line (small text above the headline)",
         "type": "text",

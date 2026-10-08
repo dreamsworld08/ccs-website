@@ -892,6 +892,36 @@ check(
   }).ok,
   'a reel must be an Instagram link',
 );
+const homeBase = {
+  hero_headline: 'Hi',
+  hero_btn1_label: 'a',
+  hero_btn2_label: 'b',
+  hero_btn2_link: '/courses',
+  founder_name: 'F',
+  founder_headline: 'H',
+  cta_headline: 'C',
+};
+// the admin always saves with the file's current version, so do the same
+const saveHome = (extra) =>
+  saveAs(
+    'home/home.json',
+    { ...homeBase, ...extra },
+    call({ action: 'getContent', token: T, path: 'home/home.json' }).sha,
+  );
+for (const mode of ['Automatic', 'Always show', 'Always hide']) {
+  check(
+    saveHome({ hero_text: mode }).ok && stored('home/home.json').hero_text === mode,
+    `the hero text setting "${mode}" is saved`,
+  );
+}
+check(
+  !saveHome({ hero_text: 'Sometimes' }).ok,
+  'an unknown hero text setting is refused by the server',
+);
+check(
+  saveHome({}).ok && !('hero_text' in stored('home/home.json')),
+  'leaving the setting out stores nothing (the site treats a missing value as Automatic)',
+);
 check(
   !saveAs('home/home.json', {
     hero_headline: 'Hi',

@@ -81,18 +81,18 @@ stored, and refuses to delete or copy `settings/site.json` and `home/home.json`.
 `src/admin/schemas.ts`: after changing it run `npm run rules` (the deploy workflow fails if you forget). To add a new
 field or section you change code, and the backend refuses it until you do.
 
-| Folder                 | What                                                                                                                          |
-| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `settings/site.json`   | Contact details, social links, attempt years (+ the developer-only `show_free_tests` switch)                                  |
-| `home/home.json`       | Hero (video or poster, search bar text, stat tiles; hero text is saved but not shown), founder message, featured courses, CTA |
-| `courses/*.json`       | Thumbnail, name, price (+ category and order set on add)                                                                      |
-| `teachers/*.json`      | Name, subject, credential, bio, photo, intro video                                                                            |
-| `results/*.json`       | Student, exam, year, rank, photo, "show on home"                                                                              |
-| `reels/*.json`         | Instagram reel testimonials: link, student, rank label, cover picture                                                         |
-| `resources/*.json`     | Free resources (uploaded PDF **or** external link)                                                                            |
-| `exam-updates/*.json`  | Date, exam body, category, title, official link                                                                               |
-| `landing-pages/*.json` | Campaign pages (`/lp/<slug>/`); only **published** ones are built                                                             |
-| `tests/*.json`         | Free tests (hidden until the developer sets `show_free_tests` to `true` in `settings/site.json`)                              |
+| Folder                 | What                                                                                                                  |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `settings/site.json`   | Contact details, social links, attempt years (+ the developer-only `show_free_tests` switch)                          |
+| `home/home.json`       | Hero (video or poster, search bar text, stat tiles; hero text on/off setting), founder message, featured courses, CTA |
+| `courses/*.json`       | Thumbnail, name, price (+ category and order set on add)                                                              |
+| `teachers/*.json`      | Name, subject, credential, bio, photo, intro video                                                                    |
+| `results/*.json`       | Student, exam, year, rank, photo, "show on home"                                                                      |
+| `reels/*.json`         | Instagram reel testimonials: link, student, rank label, cover picture                                                 |
+| `resources/*.json`     | Free resources (uploaded PDF **or** external link)                                                                    |
+| `exam-updates/*.json`  | Date, exam body, category, title, official link                                                                       |
+| `landing-pages/*.json` | Campaign pages (`/lp/<slug>/`); only **published** ones are built                                                     |
+| `tests/*.json`         | Free tests (hidden until the developer sets `show_free_tests` to `true` in `settings/site.json`)                      |
 
 Seed entries carry `"dummy": true` and show a **Sample** badge in the admin. Images live in `public/uploads/`.
 
@@ -189,10 +189,12 @@ Home page (idle) ──instagramFeed──►─────┘  returns only sa
   toppers and reels are swipe rows. They grow into the large vertical cards from 768px.
 - System font stacks (no web fonts), native `<dialog>` for the popup (a bottom sheet on phones), native `<details>`
   for FAQs and optional form fields, CSS scroll-snap carousel, one tiny filter script shared by four pages.
-- The hero is the video and nothing else: a full-width 16:9 panel with no dark tint and no text or buttons on top
-  (the headline stays as a visually hidden `<h1>` for search engines and screen readers; the text fields remain in the
-  admin and are drawn only if you remove both the video and the poster). The poster paints first; the YouTube player is
-  only fetched on desktop with a good connection, or when a phone user presses Play.
+- The hero text (welcome line, headline, sub-text, two buttons) follows one rule, `heroShowsText()` in `src/lib/hero.ts`,
+  chosen by the admin's **Text on the hero** setting (`hero_text`). **Automatic** (the default) hides the text when a
+  video is set, so the video is a clean full-width 16:9 panel with no dark tint, and shows it over the poster (or the
+  plain background) when there is no video. **Always show** and **Always hide** override that. When the text is hidden
+  the headline stays as a visually hidden `<h1>` for search engines and screen readers. The poster paints first; the
+  YouTube player is only fetched on desktop with a good connection, or when a phone user presses Play.
 - Lighthouse (mobile, simulated 4G): Performance, Accessibility, Best Practices and SEO all 100 on Home and a
   landing page (measured before the responsive-picture work; re-run it after adding real photos).
 - Right-click and image dragging are disabled on the public site (`src/scripts/protect.ts`), except inside text fields so

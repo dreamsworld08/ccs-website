@@ -570,7 +570,7 @@ export const DEVELOPER_ONLY: Record<string, Record<string, boolean | string | nu
 export const HOME_SECTIONS: { title: string; note?: string; fields: Field[] }[] = [
   {
     title: 'Hero',
-    note: 'While a video or a poster image is set, the Home page shows only that: clean and full width, with no text or buttons on top of it. The welcome line, headline, sub-text and buttons below are still saved and are shown only if you remove both the video and the poster. The search bar and the four stat tiles are always shown.',
+    note: 'A video plays clean: full width, with no text or buttons on top of it. If there is only a poster picture (no video), the welcome line, headline, sub-text and buttons are shown on top of it. "Text on the hero" lets you override that. The text below is always saved, even while it is hidden. The search bar and the four stat tiles are always shown.',
     fields: [
       {
         key: 'hero_video_url',
@@ -585,6 +585,13 @@ export const HOME_SECTIONS: { title: string; note?: string; fields: Field[] }[] 
         folder: 'home',
         maxWidth: 1600,
         help: 'Wide (16:9) picture. Also used when there is no video.',
+      },
+      {
+        key: 'hero_text',
+        label: 'Text on the hero (welcome line, headline, sub-text and buttons)',
+        type: 'select',
+        options: ['Automatic', 'Always show', 'Always hide'],
+        help: 'Automatic: hidden while a video is set (so the video is clean), shown when there is only a poster picture. Always show: put the text over the video or picture too. Always hide: show only the video or picture.',
       },
       {
         key: 'hero_kicker',
