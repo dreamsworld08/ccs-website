@@ -929,35 +929,20 @@ console.log('\nBrand: logo, favicon and share image');
 }
 
 /* ============================================================ topper reels */
-console.log('\nTopper reels (Instagram carousel)');
+console.log('\nTopper reels (Instagram carousel, on the Results page)');
 {
   const page = await newPage(390);
   // keep the enquiry popup's 50%-scroll auto-open out of the way of this test
   await page.evaluateOnNewDocument(() => sessionStorage.setItem('ccs_popup_shown', '1'));
-  await open(page, '/');
-  const pos = await page.evaluate(() => {
-    const reels = document.querySelector('[data-reels-root]');
-    const resources = document.querySelector('[data-carousel-root]');
-    const updates = [...document.querySelectorAll('h2')]
-      .find((h) => /exam update/i.test(h.textContent))
-      ?.closest('section');
-    const before = (a, b) =>
-      !!(a && b && a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
-    return {
-      exists: !!reels,
-      afterResources: before(resources, reels),
-      beforeUpdates: before(reels, updates),
-      cards: document.querySelectorAll('[data-reel]').length,
-    };
-  });
+  await open(page, '/results/');
+  const pos = await page.evaluate(() => ({
+    exists: !!document.querySelector('[data-reels-root]'),
+    cards: document.querySelectorAll('[data-reel]').length,
+  }));
   check(
     pos.exists && pos.cards === 6,
-    'Home shows the reel carousel with one card per published reel',
+    'Results shows the reel carousel with one card per published reel',
     JSON.stringify(pos),
-  );
-  check(
-    pos.afterResources && pos.beforeUpdates,
-    'it sits in the middle of the page (after Free Resources, before Exam Updates)',
   );
   const card = await page.$eval('[data-reel]', (b) => ({
     w: Math.round(b.getBoundingClientRect().width),
@@ -1043,16 +1028,20 @@ console.log('\nTopper reels (Instagram carousel)');
     JSON.stringify(sc),
   );
 
-  await open(page, '/results/');
   check(
-    !!(await page.$('[data-reels-root]')) && !(await page.$('.lite-video')),
-    'the Results page shows the same carousel instead of a single video',
+    !(await page.$('.lite-video')),
+    'the Results page shows the carousel instead of a single video',
+  );
+  await open(page, '/');
+  check(
+    !(await page.$('[data-reels-root]')) && !!(await page.$('[data-yt-root]')),
+    'Home no longer shows the reels: the YouTube videos section took their place',
   );
   await page.close();
 
   // desktop arrows
   const wide = await newPage(1280, false);
-  await open(wide, '/');
+  await open(wide, '/results/');
   const before = await wide.$eval('[data-reels-track]', (t) => t.scrollLeft);
   await wide.evaluate(() => document.querySelector('[data-reels-next]').click());
   await sleep(700);
@@ -1096,7 +1085,7 @@ console.log('\nReel previews: the cards show the reel without a tap');
   const igFrames = (page) => page.$$eval('iframe[src*="instagram"]', (f) => f.length);
   const hasKind = async (kind) => {
     const probe = await newPage(390);
-    await open(probe, '/');
+    await open(probe, '/results/');
     const found = await probe.$(`[data-reel][data-kind="${kind}"]`);
     await probe.close();
     return Boolean(found);
@@ -1107,7 +1096,7 @@ console.log('\nReel previews: the cards show the reel without a tap');
     const page = await newPage(390);
     await page.evaluateOnNewDocument(markOne, kind);
     await page.evaluateOnNewDocument(() => sessionStorage.setItem('ccs_popup_shown', '1'));
-    await open(page, '/');
+    await open(page, '/results/');
     await sleep(1500);
     check(
       (await igFrames(page)) === 0,
@@ -1202,7 +1191,7 @@ console.log('\nReel previews: the cards show the reel without a tap');
       value: { saveData: true, effectiveType: '4g' },
     });
   });
-  await open(lite, '/');
+  await open(lite, '/results/');
   await lite.evaluate(() => document.querySelector('[data-reels-root]').scrollIntoView());
   await sleep(2500);
   check((await igFrames(lite)) === 0, 'no previews are loaded on a data-saver connection');
@@ -1216,11 +1205,215 @@ console.log('\nReel previews: the cards show the reel without a tap');
       value: { saveData: false, effectiveType: '3g' },
     });
   });
-  await open(slow, '/');
+  await open(slow, '/results/');
   await slow.evaluate(() => document.querySelector('[data-reels-root]').scrollIntoView());
   await sleep(2500);
   check((await igFrames(slow)) === 0, 'no previews are loaded on a 2G/3G connection');
   await slow.close();
+}
+
+/* ============================================================ YouTube videos */
+console.log('\nYouTube videos on the Home page (card carousel)');
+{
+  const page = await newPage(390);
+  // keep the enquiry popup's 50%-scroll auto-open out of the way of this test
+  await page.evaluateOnNewDocument(() => sessionStorage.setItem('ccs_popup_shown', '1'));
+  await open(page, '/');
+  const settings = JSON.parse(await readFile(join(ROOT, 'src/content/settings/site.json'), 'utf8'));
+  const info = await page.evaluate(() => {
+    const root = document.querySelector('[data-yt-root]');
+    const resources = document.querySelector('[data-carousel-root]');
+    const updates = [...document.querySelectorAll('h2')]
+      .find((h) => /exam update/i.test(h.textContent))
+      ?.closest('section');
+    const before = (a, b) =>
+      !!(a && b && a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    const cards = [...document.querySelectorAll('[data-yt-video]')];
+    const thumb = cards[0]?.querySelector('.aspect-video');
+    const t = thumb?.getBoundingClientRect();
+    const channel = root?.querySelector('[data-yt-channel]');
+    return {
+      exists: !!root,
+      afterResources: before(resources, root),
+      beforeUpdates: before(root, updates),
+      cards: cards.length,
+      ids: cards.map((c) => c.dataset.ytVideo),
+      thumbs: cards.map((c) => c.querySelector('img')?.src),
+      heading: root?.querySelector('h2')?.textContent,
+      shortBadges: root
+        ? [...root.querySelectorAll('.mono')].filter((m) => /^Short$/i.test(m.textContent.trim()))
+            .length
+        : 0,
+      width: Math.round(cards[0]?.getBoundingClientRect().width ?? 0),
+      ratio: t ? t.width / t.height : 0,
+      channelHref: channel?.href,
+      channelRel: channel?.rel,
+      channelTarget: channel?.target,
+      // the arrows' wrapper is display:none on phones, so the buttons take up no space at all
+      arrowsShown: [...document.querySelectorAll('[data-yt-prev],[data-yt-next]')].some(
+        (b) => b.getClientRects().length > 0,
+      ),
+    };
+  });
+  check(
+    info.exists && info.cards >= 3 && info.cards <= 8,
+    'Home shows the YouTube section with 3 to 8 video cards (8 is the default)',
+    JSON.stringify({ exists: info.exists, cards: info.cards }),
+  );
+  check(
+    info.afterResources && info.beforeUpdates,
+    'it sits where the reels were (after Free Resources, before Exam Updates)',
+  );
+  check(
+    info.ids.every((id) => /^[\w-]{11}$/.test(id)) &&
+      new Set(info.ids).size === info.ids.length &&
+      info.thumbs.every((u, i) => u === `https://i.ytimg.com/vi/${info.ids[i]}/mqdefault.jpg`),
+    'every card has a valid video id, no id repeats, and its own YouTube thumbnail',
+    JSON.stringify(info.ids),
+  );
+  check(
+    info.heading === 'Latest from our YouTube channel',
+    'the heading comes from the Home settings',
+    info.heading,
+  );
+  check(info.shortBadges === 0, 'YouTube Shorts are left out by default');
+  check(
+    info.width <= 290 && Math.abs(info.ratio - 16 / 9) < 0.03,
+    'cards are compact 16:9 tiles on phones',
+    JSON.stringify({ w: info.width, r: info.ratio }),
+  );
+  check(
+    info.channelHref === settings.youtube_url &&
+      info.channelTarget === '_blank' &&
+      /noopener/.test(info.channelRel),
+    'the last card links to the channel from the Settings, in a new tab',
+    JSON.stringify({ href: info.channelHref, want: settings.youtube_url }),
+  );
+  check(!info.arrowsShown, 'the arrows are hidden on phones (they swipe)');
+  check(
+    (await page.$$('#yt-dialog iframe')).length === 0,
+    'no YouTube player is loaded until a card is tapped',
+  );
+
+  await page.evaluate(() => document.querySelector('[data-yt-root]').scrollIntoView());
+  await sleep(300);
+  const first = await page.$eval('[data-yt-video]', (b) => ({
+    id: b.dataset.ytVideo,
+    title: b.dataset.title,
+    label: b.getAttribute('aria-label'),
+  }));
+  check(
+    first.label === `Watch: ${first.title}`,
+    'each card is a button that says which video it plays',
+    first.label,
+  );
+  await page.click('[data-yt-video]');
+  await page.waitForSelector('#yt-dialog[open] iframe');
+  const d = await page.evaluate(() => {
+    const dlg = document.getElementById('yt-dialog');
+    const f = dlg.querySelector('iframe');
+    const r = dlg.getBoundingClientRect();
+    return {
+      src: f.src,
+      sandbox: f.getAttribute('sandbox'),
+      title: f.title,
+      heading: dlg.querySelector('[data-yt-title]').textContent,
+      link: dlg.querySelector('[data-yt-link]').href,
+      fits: r.left >= 0 && r.right <= innerWidth && r.bottom <= innerHeight + 1,
+    };
+  });
+  check(
+    d.src ===
+      `https://www.youtube-nocookie.com/embed/${first.id}?autoplay=1&rel=0&playsinline=1&modestbranding=1`,
+    'tapping a card plays that exact video, from the no-cookie YouTube host',
+    d.src,
+  );
+  check(
+    d.sandbox.includes('allow-scripts') && !d.sandbox.includes('allow-top-navigation'),
+    'the player frame is sandboxed (no top-level navigation)',
+    d.sandbox,
+  );
+  check(
+    d.heading === first.title &&
+      d.title === first.title &&
+      d.link === `https://www.youtube.com/watch?v=${first.id}`,
+    'the player names the video and offers "Open on YouTube"',
+    JSON.stringify(d),
+  );
+  check(d.fits, 'the player fits the phone screen');
+  await page.keyboard.press('Escape');
+  await sleep(250);
+  check(
+    !page.errors.some((e) => /Refused to (frame|load|connect)/.test(e)),
+    "the Content-Security-Policy lets YouTube's player and thumbnails load",
+    page.errors.join(' | ').slice(0, 200),
+  );
+  check(
+    !(await page.$('#yt-dialog[open]')) && !(await page.$('#yt-dialog iframe')),
+    'Escape closes the player and removes the frame (playback stops)',
+  );
+  const sc = await page.$eval('[data-yt-track]', (t) => ({
+    scrolls: t.scrollWidth > t.clientWidth,
+    page: document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+  }));
+  check(
+    sc.scrolls && sc.page,
+    'the row swipes sideways without widening the page',
+    JSON.stringify(sc),
+  );
+  for (const w of [320, 360, 768]) {
+    await page.setViewport({ width: w, height: 844, isMobile: w < 700, hasTouch: w < 700 });
+    await sleep(200);
+    check(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+      ),
+      `the YouTube section does not widen the page at ${w}px`,
+    );
+  }
+  await page.close();
+
+  // desktop: both arrows scroll the row, each disables itself at its end
+  const wide = await newPage(1280, false);
+  await wide.evaluateOnNewDocument(() => sessionStorage.setItem('ccs_popup_shown', '1'));
+  await open(wide, '/');
+  const st = () =>
+    wide.$eval('[data-yt-track]', (t) => ({
+      left: Math.round(t.scrollLeft),
+      max: Math.round(t.scrollWidth - t.clientWidth),
+      prevOff: document.querySelector('[data-yt-prev]').disabled,
+      nextOff: document.querySelector('[data-yt-next]').disabled,
+    }));
+  const go = async (sel, times = 1) => {
+    for (let i = 0; i < times; i++) {
+      await wide.evaluate((x) => document.querySelector(x).click(), sel);
+      await sleep(700);
+    }
+  };
+  const s0 = await st();
+  check(
+    s0.prevOff && !s0.nextOff && s0.max > 0,
+    'at the start "previous" is disabled and "next" is not',
+    JSON.stringify(s0),
+  );
+  await go('[data-yt-next]');
+  const s1 = await st();
+  check(
+    s1.left > s0.left && !s1.prevOff,
+    'the right arrow scrolls the row and enables the left arrow',
+    JSON.stringify(s1),
+  );
+  await go('[data-yt-prev]');
+  const s2 = await st();
+  check(s2.left < s1.left, 'the left arrow scrolls it back', JSON.stringify(s2));
+  await go('[data-yt-next]', 6);
+  const s3 = await st();
+  check(
+    s3.left >= s3.max - 2 && s3.nextOff && !s3.prevOff,
+    'at the far end "next" disables itself',
+    JSON.stringify(s3),
+  );
+  await wide.close();
 }
 
 /* ============================================================ right-click */

@@ -2,7 +2,8 @@
 # One-time: repo Settings > Pages > Build and deployment > Source: "GitHub Actions".
 #
 # Runs on every push to main, which includes the commits the admin panel makes when staff save
-# content (Apps Script commits through the GitHub API). A save goes live in about 1-2 minutes.
+# content (Apps Script commits through the GitHub API). A save goes live in about 1-2 minutes. It also runs once an hour
+# (see `schedule` below) to refresh the YouTube videos on the Home page.
 #
 # SITE_URL / BASE_PATH come from repository variables (Settings > Secrets and variables > Actions > Variables).
 # Leave them unset to deploy to https://<owner>.github.io/<repo>/.
@@ -12,6 +13,10 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [main]
+  # Rebuilds the site every hour so the Home page's YouTube section picks up new uploads (the channel's feed is read
+  # at build time, see src/lib/youtube.ts). Scheduled runs always build the latest commit on main.
+  schedule:
+    - cron: '23 * * * *'
   workflow_dispatch:
 
 permissions:

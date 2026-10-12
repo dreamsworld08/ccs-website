@@ -536,3 +536,31 @@ html:has(dialog[open]) {
   border: 0;
   background: #000;
 }
+
+/* ---- YouTube player: native <dialog>, wide 16:9 ---- */
+.yt-dialog {
+  padding: 0;
+  border: 0;
+  background: var(--color-ink);
+  color: #fff;
+  width: min(960px, calc(100vw - 24px));
+  max-height: 96dvh;
+  margin: auto;
+  border-radius: 24px;
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+.yt-dialog::backdrop {
+  background: rgb(10 11 14 / 0.78);
+}
+.yt-frame-wrap {
+  background: #000;
+  aspect-ratio: 16 / 9;
+}
+.yt-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #000;
+}

@@ -52,6 +52,14 @@ const home = defineCollection({
     founder_headline: z.string().default(''),
     founder_message: z.string().default(''),
     featured_course_ids: z.array(z.string()).default([]),
+    // The YouTube videos section (src/components/YouTubeFeed.astro). yt_count is kept a string because the admin offers it as a choice.
+    yt_show: z.boolean().default(true),
+    yt_heading: z.string().default('Latest from our YouTube channel'),
+    yt_subtext: z
+      .string()
+      .default('New lectures and current-affairs updates from our channel. Tap a card to watch.'),
+    yt_count: z.string().default('8'),
+    yt_shorts: z.boolean().default(false),
     cta_headline: z.string().default(''),
     cta_subtext: z.string().default(''),
     cta_points: z.array(z.string()).default([]),

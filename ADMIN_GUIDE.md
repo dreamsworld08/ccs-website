@@ -61,9 +61,24 @@ The table refreshes by itself every minute.
 4. Tick **Show on the Home page** if this result should appear on the Home page.
 5. **Save.** Use the **↑ ↓** buttons to change the order and the **Published** tick to hide a result.
 
+## The YouTube videos on the Home page
+
+The middle of the Home page shows the newest videos from your YouTube channel as a row of cards. People swipe on a phone,
+or use the left and right arrows on a computer, and tap a card to watch it on your site. **You do not add videos by
+hand**: when you upload to YouTube, the new video appears on the website within about an hour.
+
+Change how it looks under **Home Page > YouTube videos**:
+
+- **Show this section on the Home page**: untick to hide it.
+- **Heading** and **Sub-text**: the words above the row.
+- **How many videos to show**: 4, 6, 8, 10 or 12.
+- **Also show YouTube Shorts**: off shows only regular videos such as lectures; tick it to include the short vertical clips too.
+
+Which channel is shown comes from **Settings > YouTube channel link**. Click **Save changes**; it is live in 1-2 minutes.
+
 ## Add an Instagram reel (topper testimonial)
 
-The **Reels** tab controls the swipeable reel carousel in the middle of the Home page and on the Results page.
+The **Reels** tab controls the swipeable reel carousel on the Results page.
 
 1. On Instagram open the reel, tap the **three dots**, then **Copy link**. (The Instagram account must be public.)
 2. **Reels > Add reel.** Paste the link, type the **student name**, and the **rank and exam** in this form:

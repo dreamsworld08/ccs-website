@@ -940,6 +940,51 @@ check(
   saveHome({}).ok && !('hero_text' in stored('home/home.json')),
   'leaving the setting out stores nothing (the site treats a missing value as Automatic)',
 );
+
+// the YouTube videos section on the Home page
+const yt = {
+  yt_show: true,
+  yt_heading: 'Latest videos',
+  yt_subtext: 'Watch.',
+  yt_count: '8',
+  yt_shorts: false,
+};
+check(
+  saveHome(yt).ok &&
+    stored('home/home.json').yt_heading === 'Latest videos' &&
+    stored('home/home.json').yt_count === '8' &&
+    stored('home/home.json').yt_show === true &&
+    stored('home/home.json').yt_shorts === false,
+  'the YouTube section settings are saved',
+);
+for (const count of ['4', '6', '10', '12']) {
+  check(saveHome({ ...yt, yt_count: count }).ok, `"${count}" videos is an allowed choice`);
+}
+for (const count of ['7', '0', '99', '8; drop', 8]) {
+  check(
+    !saveHome({ ...yt, yt_count: count }).ok,
+    `${JSON.stringify(count)} videos is refused by the server`,
+  );
+}
+check(
+  !saveHome({ ...yt, yt_show: 'yes' }).ok && !saveHome({ ...yt, yt_shorts: 1 }).ok,
+  'the on/off switches must be real on/off values',
+);
+check(
+  saveHome({ ...yt, yt_heading: '', yt_count: '' }).ok,
+  'an empty heading or count is allowed (the site then uses its default heading and 8 videos)',
+);
+check(
+  !saveHome({ ...yt, yt_heading: 'x'.repeat(61) }).ok &&
+    !saveHome({ ...yt, yt_subtext: 'x'.repeat(161) }).ok,
+  'the section texts have length limits',
+);
+check(
+  saveHome({ ...yt, yt_channel: 'UCx', yt_videos: ['AAAAAAAAAAA'] }).ok &&
+    !('yt_channel' in stored('home/home.json')) &&
+    !('yt_videos' in stored('home/home.json')),
+  'extra fields (a channel id or a video list) are dropped: the channel comes only from Settings and videos are never typed in',
+);
 check(
   !saveAs('home/home.json', {
     hero_headline: 'Hi',

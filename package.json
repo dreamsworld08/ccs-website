@@ -24,7 +24,9 @@
     "test:images": "node scripts/test-images.mjs",
     "prune:uploads": "node scripts/prune-uploads.mjs",
     "test:hero": "node scripts/test-hero.mjs",
-    "test:upload": "node scripts/test-upload.mjs"
+    "test:upload": "node scripts/test-upload.mjs",
+    "test:youtube": "node scripts/test-youtube.mjs",
+    "youtube:refresh": "node scripts/refresh-youtube.mjs"
   },
   "dependencies": {
     "@astrojs/preact": "^6.0.5",

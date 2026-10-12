@@ -169,7 +169,7 @@ These are deliberate, in proportion to a static site with a contact form.
   branch (`GITHUB_BRANCH` in `Code.gs`), `main` is protected so only you can change it, and the deploy workflow builds
   code from `main` and takes only `src/content/` and `public/uploads/` from the `content` branch. It changes the
   deploy flow, so build it only if you want it.
-- **Third-party services:** YouTube (embeds load only on click or on desktop, via the privacy-enhanced domain), Instagram
+- **Third-party services:** YouTube (embeds load only on click or on desktop, via the privacy-enhanced domain; the Home page's video list is read from the channel's public feed at build time, never from a visitor's browser, and each video id is checked to be exactly 11 allowed characters before it reaches an iframe), Instagram
   (reel previews load from Instagram once the carousel scrolls into view, skipped on data-saver and slow connections, and the full player on a tap; both are sandboxed and Instagram may set its own cookies; the privacy policy says so), Google
   Drive links, Google Apps Script and GitHub. Each has its own policies.
 

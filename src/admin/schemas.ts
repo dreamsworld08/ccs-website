@@ -675,6 +675,31 @@ export const HOME_SECTIONS: { title: string; note?: string; fields: Field[] }[] 
     ],
   },
   {
+    title: 'YouTube videos',
+    note: 'Shows the newest videos of the channel linked under Settings > YouTube channel link, as a row of cards people can swipe or scroll. It updates by itself every hour; you never add videos by hand. Tapping a card plays the video on the page.',
+    fields: [
+      {
+        key: 'yt_show',
+        label: 'Show this section on the Home page',
+        type: 'checkbox',
+      },
+      { key: 'yt_heading', label: 'Heading', type: 'text', max: 60 },
+      { key: 'yt_subtext', label: 'Sub-text', type: 'textarea', max: 160 },
+      {
+        key: 'yt_count',
+        label: 'How many videos to show',
+        type: 'select',
+        options: ['4', '6', '8', '10', '12'],
+      },
+      {
+        key: 'yt_shorts',
+        label: 'Also show YouTube Shorts (short vertical clips)',
+        type: 'checkbox',
+        help: 'Off shows only regular videos such as lectures.',
+      },
+    ],
+  },
+  {
     title: 'Call to action',
     fields: [
       { key: 'cta_headline', label: 'Headline', type: 'text', required: true, max: 70 },

@@ -1,0 +1,182 @@
+---
+import Icon from './Icon.astro';
+import { getHome, getSettings, safeHref } from '../lib/site';
+import { formatDate, getChannelVideos, pickVideos, thumb, type Snapshot } from '../lib/youtube';
+import snapshot from '../data/youtube-snapshot.json';
+
+// The newest videos of the channel in Settings, read when the site is built (see src/lib/youtube.ts).
+const home = await getHome();
+const settings = await getSettings();
+const feed = home.yt_show
+  ? await getChannelVideos(settings.youtube_url, snapshot as Snapshot)
+  : undefined;
+const all = feed?.videos ?? [];
+if (feed)
+  console.log(
+    `[youtube] ${feed.fresh ? 'read the channel feed' : 'channel feed unavailable, used the saved copy'}: ${all.length} videos`,
+  );
+const videos = pickVideos(all, { count: home.yt_count, shorts: home.yt_shorts });
+const channel = safeHref(settings.youtube_url);
+---
+
+{videos.length > 0 && (
+  <section class="panel bg-white border border-line" data-yt-root>
+    <div class="container-x section-pad">
+      <div class="mb-5 flex items-end justify-between gap-4 md:mb-10">
+        <div>
+          <span class="chip chip-kicker mb-4 md:mb-5">YouTube</span>
+          <h2 class="h2">{home.yt_heading.trim() || 'Latest from our YouTube channel'}</h2>
+          {home.yt_subtext && (
+            <p class="mt-3 max-w-[560px] text-[15px] text-muted md:text-[17px]">
+              {home.yt_subtext}
+            </p>
+          )}
+        </div>
+        <div class="hidden gap-2 md:flex">
+          <button
+            type="button"
+            class="btn btn-white !h-12 !w-12 !p-0 disabled:opacity-40"
+            data-yt-prev
+            aria-label="Previous videos"
+          >
+            <Icon name="arrow-left" size={20} />
+          </button>
+          <button
+            type="button"
+            class="btn btn-dark !h-12 !w-12 !p-0 disabled:opacity-40"
+            data-yt-next
+            aria-label="Next videos"
+          >
+            <Icon name="arrow-right" size={20} />
+          </button>
+        </div>
+      </div>
+
+      <div
+        class="carousel -mx-5 px-5 md:mx-0 md:px-0"
+        data-yt-track
+        tabindex="0"
+        role="region"
+        aria-label="Latest YouTube videos"
+      >
+        {videos.map((v) => (
+          <button
+            type="button"
+            class="group block w-[272px] text-left md:w-[328px] lg:w-[352px]"
+            data-yt-video={v.id}
+            data-title={v.title}
+            aria-label={`Watch: ${v.title}`}
+          >
+            <span class="relative block aspect-video overflow-hidden rounded-[18px] bg-ink md:rounded-[24px]">
+              <img
+                src={thumb(v.id, 'mq')}
+                srcset={`${thumb(v.id, 'mq')} 320w, ${thumb(v.id, 'hq')} 480w`}
+                sizes="(min-width: 1024px) 352px, (min-width: 768px) 328px, 272px"
+                width="320"
+                height="180"
+                alt=""
+                loading="lazy"
+                decoding="async"
+                class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+              />
+              <span class="absolute inset-0 bg-[linear-gradient(to_top,rgb(26_27_31/0.55)_0%,transparent_55%)]" />
+              <span class="absolute left-1/2 top-1/2 inline-flex h-12 w-12 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-ink shadow-lg transition-colors group-hover:bg-primary group-hover:text-white md:h-14 md:w-14">
+                <Icon name="play" size={22} />
+              </span>
+              {v.short && (
+                <span class="mono absolute left-3 top-3 rounded-full bg-ink/80 px-2.5 py-1 text-[11px] font-medium uppercase tracking-wide text-white">
+                  Short
+                </span>
+              )}
+            </span>
+            <span class="mt-3 block px-1">
+              <span class="line-clamp-2 block text-[16px] font-semibold leading-snug text-ink md:text-[17px]">
+                {v.title}
+              </span>
+              <span class="mono mt-1.5 block text-[12px] uppercase tracking-wide text-muted">
+                {formatDate(v.published)}
+              </span>
+            </span>
+          </button>
+        ))}
+        {channel && (
+          <a
+            href={channel}
+            target="_blank"
+            rel="noopener noreferrer"
+            class="group flex aspect-video w-[272px] flex-col items-center justify-center gap-3 self-start rounded-[18px] border border-line bg-panel p-5 text-center text-ink hover:border-primary md:w-[328px] md:rounded-[24px] lg:w-[352px]"
+            data-yt-channel
+          >
+            <span class="inline-flex h-12 w-12 items-center justify-center rounded-full bg-ink text-white group-hover:bg-primary">
+              <Icon name="youtube" size={22} />
+            </span>
+            <span class="font-heading text-[20px] font-bold uppercase leading-tight">
+              See all videos on YouTube
+            </span>
+          </a>
+        )}
+      </div>
+    </div>
+
+    <!-- One popup for every video; it builds the YouTube address itself from a validated id (src/scripts/yt-player.ts). -->
+    <dialog id="yt-dialog" class="yt-dialog" aria-labelledby="yt-dialog-title">
+      <div class="flex items-center justify-between gap-3 px-4 py-3">
+        <p id="yt-dialog-title" data-yt-title class="h3 min-w-0 truncate !text-[18px]">
+          Video
+        </p>
+        <button
+          type="button"
+          class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/15 text-white hover:bg-white/25"
+          data-yt-close
+          aria-label="Close video"
+        >
+          <Icon name="x" size={20} />
+        </button>
+      </div>
+      <div class="yt-frame-wrap" data-yt-frame></div>
+      <div class="flex items-center justify-between gap-3 px-4 py-3 text-[13px] text-white/70">
+        <span>Plays from YouTube</span>
+        <a
+          data-yt-link
+          href="https://www.youtube.com/"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="btn btn-white btn-sm"
+        >
+          Open on YouTube <Icon name="arrow-up-right" size={15} />
+        </a>
+      </div>
+    </dialog>
+  </section>
+)}
+
+<script>
+  import { setupYouTubePlayer } from '../scripts/yt-player';
+
+  const root = document.querySelector<HTMLElement>('[data-yt-root]');
+  const dialog = document.getElementById('yt-dialog') as HTMLDialogElement | null;
+  if (root && dialog) {
+    const track = root.querySelector<HTMLElement>('[data-yt-track]')!;
+    const prev = root.querySelector<HTMLButtonElement>('[data-yt-prev]');
+    const next = root.querySelector<HTMLButtonElement>('[data-yt-next]');
+
+    // Both arrows scroll about three quarters of what is visible; each is disabled when there is nothing further that way.
+    const page = () => Math.max(200, track.clientWidth * 0.75);
+    const sync = () => {
+      const max = track.scrollWidth - track.clientWidth;
+      if (prev) prev.disabled = track.scrollLeft <= 2;
+      if (next) next.disabled = track.scrollLeft >= max - 2;
+    };
+    prev?.addEventListener('click', () => track.scrollBy({ left: -page(), behavior: 'smooth' }));
+    next?.addEventListener('click', () => track.scrollBy({ left: page(), behavior: 'smooth' }));
+    track.addEventListener('scroll', sync, { passive: true });
+    window.addEventListener('resize', sync, { passive: true });
+    sync();
+
+    const openPlayer = setupYouTubePlayer(dialog);
+    track.addEventListener('click', (e) => {
+      const card = (e.target as Element).closest<HTMLElement>('[data-yt-video]');
+      if (card) openPlayer(card.dataset.ytVideo ?? '', card.dataset.title ?? 'Video');
+    });
+  }
+</script>

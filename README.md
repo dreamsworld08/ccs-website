@@ -127,10 +127,32 @@ at `/search/?q=...`.
   year", "hall ticket" finds admit cards). See `src/pages/search-index.json.ts` and `src/lib/search.ts`.
 - Result rows open the resource or official link in a new tab; student results open `/results/?q=<name>`.
 
+## YouTube videos (Home page)
+
+A row of 16:9 video cards in the middle of the Home page (between Free Resources and Exam Updates), swipeable on phones and
+with left and right arrows on desktop (each arrow disables itself at its end). Tapping a card plays the video in a popup.
+
+- **Where the videos come from:** the channel in **Admin > Settings > YouTube channel link**. The site reads that channel's
+  public feed (`https://www.youtube.com/feeds/videos.xml?channel_id=...`, the newest 15 uploads) **when it is built**, so
+  there is no API key and no cost, and visitors' browsers never wait on YouTube. `.github/workflows/deploy.yml` rebuilds the
+  site every hour, so a new upload appears within about an hour. A `@handle` link is turned into the channel id once and
+  kept in the saved copy; a `/channel/UC...` link needs no lookup.
+- **If YouTube cannot be reached during a build,** the last good copy in `src/data/youtube-snapshot.json` is used (only if
+  it is for the same channel), so the build never fails and the section does not vanish. Refresh that copy with
+  `npm run youtube:refresh`, for example after changing the channel link. The build log says which happened
+  (`[youtube] read the channel feed` or `used the saved copy`).
+- **Admin controls** (Home Page > YouTube videos): show or hide the section, its heading and sub-text, how many videos
+  (4 to 12, default 8) and whether to include YouTube **Shorts** (off by default: they are vertical clips, so only regular
+  videos show). Videos are never typed in by hand.
+- **Safety:** the popup builds its address from a validated 11-character video id on `youtube-nocookie.com`, sandboxed, and
+  removes the frame on close (`src/scripts/yt-player.ts`). Thumbnails come from `i.ytimg.com`, which the
+  Content-Security-Policy already allowed. Titles are cleaned of hashtags. The logic is in `src/lib/youtube.ts` and is
+  tested by `npm run test:youtube`.
+
 ## Topper reels (Instagram carousel)
 
-A swipeable row of 9:16 reel cards in the middle of the Home page (between Free Resources and Exam Updates) and on
-the Results page. Manage it in **Admin > Reels**: paste the reel's Instagram link, the student, a rank label and a cover picture.
+A swipeable row of 9:16 reel cards on the Results page (it used to be on the Home page too; the Home page now shows the
+YouTube videos below instead). Manage it in **Admin > Reels**: paste the reel's Instagram link, the student, a rank label and a cover picture.
 
 - **The cards show the real reel without a tap.** Each non-sample card embeds Instagram's own preview, scaled and
   cropped to the card (a 9:16 reel fits exactly; a photo post is cropped to fill it). It is display-only: swiping scrolls
@@ -151,7 +173,7 @@ the Results page. Manage it in **Admin > Reels**: paste the reel's Instagram lin
 ## Live Instagram feed
 
 The Home page can show the institute's newest Instagram photos and reels as a swipeable row ("Latest from our Instagram",
-right after the topper reels). It is separate from the hand-picked **Reels** tab and appears only when an admin has
+right after the YouTube videos). It is separate from the hand-picked **Reels** tab and appears only when an admin has
 connected an account and switched it on; otherwise the section is simply not on the page.
 
 **How it works**
@@ -213,6 +235,7 @@ Home page (idle) ──instagramFeed──►─────┘  returns only sa
 | `npm run lint` / `format`      | ESLint / Prettier                                                                         |
 | `npm run hash -- --generate`   | Make an admin login for `CONFIG.ADMINS`: a long random password (shown once) and its hash |
 | `npm run rules`                | Regenerate the backend's content lock from `src/admin/schemas.ts` (`-- --check` verifies) |
+| `npm run youtube:refresh`      | Save the channel's latest videos as the Home page's offline fallback copy                 |
 | `npm run prune:uploads`        | List uploaded files no page uses (`-- --delete` removes them)                             |
 | `npm run placeholders`         | Regenerate the placeholder artwork in `public/uploads/placeholders`                       |
 | `npm run brand`                | Rebuild the logo, favicon, app icons and share image from `brand/ccs-logo.png`            |
@@ -231,7 +254,7 @@ npm run check:layout
 
 `test:gs` proves the Apps Script logic (validation, auth, the content lock, stable row ids, GitHub conflicts, uploads and
 their retry-safety, admin management). `test:upload` checks the upload file-name rule used by the browser, Code.gs and the
-local server. It cannot prove Google's runtime accepts every call, so follow the test steps in
+local server; `test:youtube` checks reading and choosing the channel's videos and the offline fallback. It cannot prove Google's runtime accepts every call, so follow the test steps in
 [SETUP.md](google-apps-script/SETUP.md) once on the real account.
 
 ## Deploy to GitHub Pages
