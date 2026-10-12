@@ -363,7 +363,12 @@ function useUploader(value: string, onChange: (v: string) => void) {
     setStatus('uploading');
     void done.then((res) => {
       if (!alive.current) return;
-      if (res.ok) return setStatus('done');
+      if (res.ok) {
+        // An older backend may have stored the file under another name: follow it, unless the admin changed the field since.
+        if (res.path && res.path !== path && latest.current.value === path)
+          latest.current.onChange(res.path);
+        return setStatus('done');
+      }
       setStatus('');
       // Put the earlier file back, unless the admin has already changed this field again in the meantime.
       const revert = latest.current.value === path;

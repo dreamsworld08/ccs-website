@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { getItem, listItems, saveItem, type Item } from '../api';
 import { FieldInput } from '../fields';
-import { HOME_SECTIONS, validateFields } from '../schemas';
+import { HOME_DEFAULTS, HOME_SECTIONS, validateFields } from '../schemas';
 import { Banner, savedToast, toast } from '../ui';
 
 const PATH = 'home/home.json';
@@ -19,7 +19,7 @@ export default function HomeTab() {
     const [res, list] = await Promise.all([getItem(PATH), listItems('courses')]);
     if (!res.ok) return void setError(res.error || 'Could not load the Home page content.');
     setItem(res as unknown as Item);
-    setData((res as unknown as Item).data);
+    setData({ ...HOME_DEFAULTS, ...(res as unknown as Item).data });
     setDirty(false);
     setCourses(
       (list ?? []).map((i) => ({

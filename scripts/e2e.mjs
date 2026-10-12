@@ -2765,6 +2765,44 @@ console.log(
       await page.close();
       await cleanProbe();
     }
+
+    // 9. a backend that has not been updated ignores the chosen name and stores the file under its own: the record
+    //    must follow the name the server reports, or the picture would be missing on the website
+    {
+      const page = await newProbePage();
+      let asked = '';
+      await page.setRequestInterception(true);
+      page.on('request', async (r) => {
+        if (isApi(r) && actionOf(r) === 'uploadFile') {
+          const body = new URLSearchParams(r.postData());
+          asked = body.get('name');
+          body.delete('name'); // an older backend never reads it
+          await sleep(30); // so that its own timestamp differs from the one the page chose
+          return r.continue({ postData: body.toString() });
+        }
+        r.continue().catch(() => {});
+      });
+      await pickProbe(page);
+      await page.waitForSelector('.drawer .imgfield[data-upload="done"]', { timeout: 30000 });
+      await clickSave(page);
+      await page.waitForFunction(() => !document.querySelector('.drawer'), { timeout: 30000 });
+      const stored = await probeFiles();
+      const file = (await readdir(join(ROOT, 'src/content/courses'))).find((f) =>
+        f.startsWith('e2e-upload-probe'),
+      );
+      const saved = file
+        ? JSON.parse(await readFile(join(ROOT, 'src/content/courses', file), 'utf8'))
+        : {};
+      check(
+        stored.length === 1 &&
+          stored[0] !== asked &&
+          saved.thumbnail === `/uploads/courses/${stored[0]}`,
+        'with a backend that picks its own file name, the saved record points at the name it really used',
+        `asked ${asked}, stored ${stored.join(',')}, thumbnail ${saved.thumbnail}`,
+      );
+      await page.close();
+      await cleanProbe();
+    }
     await rm(probe);
   }
 }

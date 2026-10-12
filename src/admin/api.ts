@@ -62,7 +62,7 @@ export async function saveItem(path: string, data: object, sha: string): Promise
   // Never save a link to a picture that is still on its way, or that never arrived.
   const problem = await unfinishedUploads(data);
   if (problem) return { ok: false, error: problem };
-  return call('saveContent', { path, json: JSON.stringify(data), sha });
+  return call('saveContent', { path, json: JSON.stringify(withStoredNames(data)), sha });
 }
 export function deleteItem(path: string, sha: string): Promise<SaveResult> {
   return call('deleteContent', { path, sha });
@@ -75,6 +75,13 @@ const justUploaded = new Map<string, string>();
 /** Uploads still on their way, and the paths of uploads that gave up: a record that mentions either is not saved. */
 const running = new Map<string, Promise<ApiResult<{ path: string }>>>();
 const failed = new Set<string>();
+/**
+ * The address the server really stored a file under, when it differs from the one we asked for. The current backend
+ * keeps the name the browser chose, but a backend that has not been updated yet (see google-apps-script/Code.gs) picks
+ * its own name and answers with it. The answer is the truth: records must use it, or the picture would not be found.
+ */
+const storedAs = new Map<string, string>();
+const actualPath = (path: string) => storedAs.get(path) ?? path;
 
 /**
  * Starts uploading a picture or PDF and returns its final address AT ONCE, so the form can use it straight away and the
@@ -92,12 +99,24 @@ export function startUpload(folder: string, filename: string, base64: string, ex
       if (!res.ok) {
         failed.add(path);
         justUploaded.delete(path);
+      } else if (res.path && res.path !== path) {
+        storedAs.set(path, res.path);
+        if (ext === 'webp') justUploaded.set(res.path, `data:image/webp;base64,${base64}`);
       }
       return res;
     },
   );
   running.set(path, done);
   return { path, done };
+}
+
+/** `data` with every picture or PDF address replaced by the one the server really used (see storedAs). */
+function withStoredNames<T>(v: T): T {
+  if (typeof v === 'string') return actualPath(v) as T;
+  if (Array.isArray(v)) return v.map(withStoredNames) as T;
+  if (v && typeof v === 'object')
+    return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, withStoredNames(x)])) as T;
+  return v;
 }
 
 function stringsIn(v: unknown, out: string[] = []): string[] {

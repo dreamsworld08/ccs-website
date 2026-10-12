@@ -709,6 +709,20 @@ export const HOME_SECTIONS: { title: string; note?: string; fields: Field[] }[] 
   },
 ];
 
+/**
+ * What the Home page uses for a setting that is missing from home.json (the site applies the same defaults, see
+ * src/content.config.ts). The form starts from these, so a missing on/off setting is not shown as "off" and then saved
+ * as off by accident (for example the YouTube section) when someone only edits something else.
+ */
+export const HOME_DEFAULTS: Record<string, string | boolean> = {
+  hero_text: 'Automatic',
+  yt_show: true,
+  yt_heading: 'Latest from our YouTube channel',
+  yt_subtext: 'New lectures and current-affairs updates from our channel. Tap a card to watch.',
+  yt_count: '8',
+  yt_shorts: false,
+};
+
 /** Validation shared by the drawer form and the single-file forms. Returns an error message or ''. */
 export function validateFields(
   fields: Field[],
