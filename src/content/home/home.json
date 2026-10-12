@@ -17,8 +17,8 @@
   ],
   "stats": [
     {
-      "value": "500+",
-      "label": "Selections since 2015"
+      "value": "00+",
+      "label": "Selections since 2020"
     },
     {
       "value": "12",
@@ -44,11 +44,6 @@
     "punjab-pcs-comprehensive",
     "patwari-clerk-batch"
   ],
-  "yt_show": true,
-  "yt_heading": "Latest from our YouTube channel",
-  "yt_subtext": "New lectures and current-affairs updates from our channel. Tap a card to watch.",
-  "yt_count": "8",
-  "yt_shorts": false,
   "cta_headline": "Start your preparation the right way",
   "cta_subtext": "Share your details and our counsellor will call you within 24 hours.",
   "cta_points": [
