@@ -1,12 +1,11 @@
 {
-  "student_name": "Simran Kaur",
+  "photo": "/uploads/results/screenshot-2026-10-12-at-6-06-47-pm-1791808617960.webp",
+  "student_name": "Dilpreet",
   "exam": "UPSC CSE",
   "exam_year": "2025",
-  "rank_label": "AIR 112",
-  "photo": "/uploads/placeholders/person-2.svg",
+  "rank_label": "AIR 237",
   "quote": "The test series and mentor feedback were the difference.",
   "show_on_home": true,
   "order": 2,
-  "published": true,
-  "dummy": true
+  "published": true
 }
