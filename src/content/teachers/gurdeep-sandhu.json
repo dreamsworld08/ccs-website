@@ -1,11 +1,10 @@
 {
-  "photo": "/uploads/placeholders/person-4.svg",
+  "photo": "/uploads/teachers/whatsapp-image-2026-10-06-at-12-21-36-1-1791803973009.webp",
   "name": "Gurdeep Sandhu",
   "subject": "Geography & Environment",
   "credential": "M.Sc Geography · 11 yrs",
   "bio": "Map-first teaching for physical, Indian and world geography plus environment and ecology.",
   "intro_video_url": "",
   "order": 3,
-  "published": true,
-  "dummy": true
+  "published": true
 }
