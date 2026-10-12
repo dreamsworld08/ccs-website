@@ -9,11 +9,12 @@
   "hero_btn2_link": "/courses",
   "hero_search_placeholder": "Search resources, updates and results",
   "hero_search_popular": [
-    "Patwari",
     "PYQ",
-    "Admit card",
+    "HAS",
     "Current affairs",
-    "Punjab GK"
+    "Punjab GK",
+    "UPSC",
+    "Punjab Prelims"
   ],
   "stats": [
     {
