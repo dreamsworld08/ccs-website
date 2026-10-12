@@ -13,7 +13,9 @@ export type ApiResult<T = Record<string, unknown>> = {
  *   - login, reading data: nothing changes on the server, so repeating is harmless;
  *   - submitEnquiry: the server already treats the same mobile number within 10 minutes as "received", and the form
  *     shows that as success, so a repeat can never create a second enquiry.
- * Anything that writes (saving content, uploads, status and notes, changing a password) is never repeated by the
+ *   - uploadFile: the browser picks the file name, and the server answers "done" for the same name with the same bytes
+ *     without storing a second copy, so a repeat after a lost answer is harmless.
+ * Anything else that writes (saving content, status and notes, changing a password) is never repeated by the
  * browser on its own, because a repeat after a lost answer could apply it twice.
  */
 const REPEATABLE = new Set([
@@ -25,6 +27,7 @@ const REPEATABLE = new Set([
   'getContent',
   'getInstagram',
 ]);
+const IDEMPOTENT_WRITES = new Set(['uploadFile']);
 const SLOW_START = new Set(['login', 'submitEnquiry', 'instagramFeed']); // small answers: give up on a stuck attempt early
 
 type Params = Record<string, string | number | boolean | undefined | null>;
@@ -79,6 +82,15 @@ export async function callBackend<T = Record<string, unknown>>(
   params: Params = {},
   timeoutMs = 25000,
 ): Promise<ApiResult<T>> {
+  if (IDEMPOTENT_WRITES.has(action)) {
+    let result = await attempt<T>(action, params, timeoutMs);
+    for (let i = 1; i < 3; i++) {
+      if (result.code !== 'bad_response' && result.code !== 'network') break;
+      await new Promise((r) => setTimeout(r, 1000 * i));
+      result = await attempt<T>(action, params, timeoutMs);
+    }
+    return result;
+  }
   if (!REPEATABLE.has(action)) {
     const result = await attempt<T>(action, params, timeoutMs);
     // For a write, "no answer" does not mean "not done": say so, so nobody retries blindly or assumes it failed.

@@ -1,6 +1,6 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
-import { assetUrl, uploadFile } from './api';
+import { assetUrl, startUpload } from './api';
 import { compressImage, fileToBase64, formatBytes } from './image';
 import type { Field } from './schemas';
 import { toast } from './ui';
@@ -341,6 +341,55 @@ export function FieldInput({
   }
 }
 
+/**
+ * Starts the upload of a picture or PDF and puts its final address into the form at once (see startUpload): the admin
+ * never waits on Google, and Save waits for the upload by itself. If the upload gives up, the previous value comes back.
+ */
+function useUploader(value: string, onChange: (v: string) => void) {
+  const [status, setStatus] = useState<'' | 'uploading' | 'done'>('');
+  const latest = useRef({ value, onChange });
+  latest.current = { value, onChange };
+  const alive = useRef(true);
+  useEffect(
+    () => () => {
+      alive.current = false;
+    },
+    [],
+  );
+  function begin(folder: string, filename: string, base64: string, ext: 'webp' | 'pdf') {
+    const previous = value;
+    const { path, done } = startUpload(folder, filename, base64, ext);
+    onChange(path);
+    setStatus('uploading');
+    void done.then((res) => {
+      if (!alive.current) return;
+      if (res.ok) return setStatus('done');
+      setStatus('');
+      // Put the earlier file back, unless the admin has already changed this field again in the meantime.
+      const revert = latest.current.value === path;
+      if (revert) latest.current.onChange(previous);
+      toast(
+        `The file could not be uploaded (${res.error || 'unknown error'}).${revert ? ' The previous one was kept.' : ''} Please try again.`,
+        'error',
+        9000,
+      );
+    });
+    return path;
+  }
+  return { status, begin };
+}
+
+function UploadStatus({ status }: { status: '' | 'uploading' | 'done' }) {
+  if (!status) return null;
+  return (
+    <span class="help" role="status" data-upload={status}>
+      {status === 'uploading'
+        ? 'Uploading in the background. You can keep editing; Save waits for it.'
+        : '✓ Uploaded.'}
+    </span>
+  );
+}
+
 function ImageField({
   id,
   field,
@@ -353,6 +402,10 @@ function ImageField({
   onChange: (v: string) => void;
 }) {
   const [busy, setBusy] = useState('');
+  const [missing, setMissing] = useState(false);
+  const { status, begin } = useUploader(value, onChange);
+  useEffect(() => setMissing(false), [value]);
+  const working = Boolean(busy) || status === 'uploading';
   async function pick(e: Event) {
     const input = e.target as HTMLInputElement;
     const file = input.files?.[0];
@@ -364,10 +417,7 @@ function ImageField({
         file,
         field.maxWidth ?? 1600,
       );
-      setBusy(`Uploading ${formatBytes(bytes)}…`);
-      const res = await uploadFile(field.folder ?? 'misc', file.name, base64);
-      if (!res.ok) throw new Error(res.error || 'Upload failed.');
-      onChange(res.path);
+      begin(field.folder ?? 'misc', file.name, base64, 'webp');
       toast(
         `Picture optimised: ${formatBytes(originalBytes)} → ${formatBytes(bytes)} (WebP, ${width}×${height}). Remember to Save.`,
         'info',
@@ -380,29 +430,37 @@ function ImageField({
     }
   }
   return (
-    <div class="imgfield">
-      {value ? (
-        <img src={assetUrl(value)} alt="" class="imgprev" />
+    <div class="imgfield" data-upload={status}>
+      {value && !missing ? (
+        <img src={assetUrl(value)} alt="" class="imgprev" onError={() => setMissing(true)} />
       ) : (
-        <div class="imgprev imgprev-empty">No image</div>
+        <div class="imgprev imgprev-empty">
+          {value
+            ? value.startsWith('/uploads/')
+              ? 'Going live in about 2 minutes'
+              : 'Could not load this picture'
+            : 'No image'}
+        </div>
       )}
       <div class="imgfield-actions">
-        <label class="btn btn-sm" aria-disabled={Boolean(busy)}>
-          {busy || (value ? 'Replace image' : 'Upload image')}
+        <label class="btn btn-sm" aria-disabled={working}>
+          {busy ||
+            (status === 'uploading' ? 'Uploading…' : value ? 'Replace image' : 'Upload image')}
           <input
             id={id}
             type="file"
             accept="image/png,image/jpeg,image/webp"
             hidden
-            disabled={Boolean(busy)}
+            disabled={working}
             onChange={pick}
           />
         </label>
-        {value && !busy && (
+        {value && !working && (
           <button type="button" class="btn btn-sm" onClick={() => onChange('')}>
             Remove
           </button>
         )}
+        <UploadStatus status={status} />
         <span class="help">
           Resized and converted to WebP automatically. The website then makes smaller copies for
           phones.
@@ -424,6 +482,8 @@ function PdfField({
   onChange: (v: string) => void;
 }) {
   const [busy, setBusy] = useState('');
+  const { status, begin } = useUploader(value, onChange);
+  const working = Boolean(busy) || status === 'uploading';
   async function pick(e: Event) {
     const input = e.target as HTMLInputElement;
     const file = input.files?.[0];
@@ -435,15 +495,9 @@ function PdfField({
         throw new Error(
           'This PDF is over 5 MB. Compress it or share it as a Google Drive link instead.',
         );
-      setBusy('Uploading…');
-      const res = await uploadFile(
-        field.folder ?? 'resources',
-        file.name,
-        await fileToBase64(file),
-      );
-      if (!res.ok) throw new Error(res.error || 'Upload failed.');
-      onChange(res.path);
-      toast('PDF uploaded. Remember to Save.', 'info', 3500);
+      setBusy('Reading…');
+      begin(field.folder ?? 'resources', file.name, await fileToBase64(file), 'pdf');
+      toast('PDF added. Remember to Save.', 'info', 3500);
     } catch (err) {
       toast((err as Error).message, 'error', 8000);
     } finally {
@@ -451,28 +505,29 @@ function PdfField({
     }
   }
   return (
-    <div class="imgfield-actions">
+    <div class="imgfield-actions" data-upload={status}>
       {value && (
         <a href={assetUrl(value)} target="_blank" rel="noopener noreferrer">
           {value.split('/').pop()}
         </a>
       )}
-      <label class="btn btn-sm" aria-disabled={Boolean(busy)}>
-        {busy || (value ? 'Replace PDF' : 'Upload PDF')}
+      <label class="btn btn-sm" aria-disabled={working}>
+        {busy || (status === 'uploading' ? 'Uploading…' : value ? 'Replace PDF' : 'Upload PDF')}
         <input
           id={id}
           type="file"
           accept="application/pdf"
           hidden
-          disabled={Boolean(busy)}
+          disabled={working}
           onChange={pick}
         />
       </label>
-      {value && !busy && (
+      {value && !working && (
         <button type="button" class="btn btn-sm" onClick={() => onChange('')}>
           Remove
         </button>
       )}
+      <UploadStatus status={status} />
     </div>
   );
 }

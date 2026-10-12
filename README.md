@@ -229,8 +229,9 @@ npm run build:local && npm run e2e       # terminal 2
 npm run check:layout
 ```
 
-`test:gs` proves the Apps Script logic (validation, auth, the content lock, stable row ids, GitHub conflicts, uploads,
-admin management). It cannot prove Google's runtime accepts every call, so follow the test steps in
+`test:gs` proves the Apps Script logic (validation, auth, the content lock, stable row ids, GitHub conflicts, uploads and
+their retry-safety, admin management). `test:upload` checks the upload file-name rule used by the browser, Code.gs and the
+local server. It cannot prove Google's runtime accepts every call, so follow the test steps in
 [SETUP.md](google-apps-script/SETUP.md) once on the real account.
 
 ## Deploy to GitHub Pages

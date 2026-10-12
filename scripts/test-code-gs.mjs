@@ -196,7 +196,13 @@ globalThis.CacheService = {
     remove: (k) => void cacheStore.delete(k),
   }),
 };
-globalThis.LockService = { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) };
+const locks = { taken: 0, released: 0 };
+globalThis.LockService = {
+  getScriptLock: () => ({
+    waitLock: () => void locks.taken++,
+    releaseLock: () => void locks.released++,
+  }),
+};
 globalThis.MailApp = { sendEmail() {} };
 globalThis.Session = { getEffectiveUser: () => ({ getEmail: () => 'owner@example.com' }) };
 globalThis.ContentService = {
@@ -210,9 +216,9 @@ globalThis.ContentService = {
 };
 const sleeps = []; // every Utilities.sleep(ms) the script asks for (the slow-down after many wrong passwords)
 globalThis.Utilities = {
-  DigestAlgorithm: { SHA_256: 'sha256' },
+  DigestAlgorithm: { SHA_1: 'sha1', SHA_256: 'sha256' },
   Charset: { UTF_8: 'utf8' },
-  computeDigest: (_alg, s) => signed(createHash('sha256').update(toBuf(s)).digest()),
+  computeDigest: (alg, s) => signed(createHash(alg).update(toBuf(s)).digest()),
   computeHmacSha256Signature: (v, key) =>
     signed(createHmac('sha256', key).update(toBuf(v)).digest()),
   base64EncodeWebSafe: (s) =>
@@ -241,6 +247,11 @@ const resp = (code, body) => ({
   getResponseCode: () => code,
   getContentText: () => JSON.stringify(body),
 });
+const ghFault = { put: 0, code: 503 }; // the next N writes to GitHub fail with this status
+const gitBlobSha = (buf) =>
+  createHash('sha1')
+    .update(Buffer.concat([Buffer.from(`blob ${buf.length}\0`), buf]))
+    .digest('hex');
 function github(url, params = {}) {
   const u = new URL(url);
   const m = u.pathname.match(/^\/repos\/acme\/ccs-website\/contents\/(.+)$/);
@@ -261,11 +272,18 @@ function github(url, params = {}) {
     );
   }
   const existing = repo.get(path);
+  if (method === 'put' && ghFault.put > 0) {
+    ghFault.put--;
+    return resp(ghFault.code, { message: 'temporary GitHub trouble' });
+  }
   if (method === 'put') {
     if (existing && body.sha !== existing.sha)
       return resp(body.sha ? 409 : 422, { message: 'sha mismatch' });
     if (!existing && body.sha) return resp(409, { message: 'not found' });
-    const sha = `sha${++shaCounter}`;
+    // Like GitHub, an uploaded file's sha is git's hash of its bytes (the script compares it to recognise a repeated upload).
+    const sha = path.startsWith('public/')
+      ? gitBlobSha(Buffer.from(body.content, 'base64'))
+      : `sha${++shaCounter}`;
     repo.set(path, { content: body.content, sha });
     commits.push({ path, message: body.message, branch: body.branch });
     return resp(existing ? 200 : 201, { content: { sha } });
@@ -1054,6 +1072,115 @@ check(
     base64: '@@@not base64@@@',
   }).ok,
   'garbage base64 refused',
+);
+
+console.log('\nuploads chosen by the browser (retry-safe) and queued one at a time');
+const NAME = 'amit-sharma-1791803973009.webp';
+const upBase = {
+  action: 'uploadFile',
+  token: T,
+  folder: 'teachers',
+  filename: 'Amit Sharma.jpg',
+  base64: webp,
+};
+const commitsBefore = commits.length;
+const lockBefore = { ...locks };
+const named = call({ ...upBase, name: NAME });
+check(
+  named.ok &&
+    named.path === `/uploads/teachers/${NAME}` &&
+    repo.has(`public/uploads/teachers/${NAME}`) &&
+    commits.length === commitsBefore + 1,
+  'the file name chosen by the browser is used exactly, so the page knows the address in advance',
+  JSON.stringify(named),
+);
+check(
+  locks.taken === lockBefore.taken + 1 && locks.released === lockBefore.released + 1,
+  'an upload takes the write queue and gives it back',
+);
+const again = call({ ...upBase, name: NAME });
+check(
+  again.ok &&
+    again.path === named.path &&
+    again.repeated === true &&
+    commits.length === commitsBefore + 1,
+  'repeating the same upload (the first answer was lost) succeeds without storing a second copy',
+  JSON.stringify(again),
+);
+const other = Buffer.concat([
+  Buffer.from('RIFF'),
+  Buffer.from([4, 0, 0, 0]),
+  Buffer.from('WEBPVP8 '),
+  Buffer.alloc(41),
+]).toString('base64');
+const clash = call({ ...upBase, name: NAME, base64: other });
+check(
+  !clash.ok &&
+    clash.code === 'name_taken' &&
+    repo.get(`public/uploads/teachers/${NAME}`).content === webp &&
+    commits.length === commitsBefore + 1,
+  'a DIFFERENT file under a name that is taken is refused and never overwrites the stored one',
+  JSON.stringify(clash),
+);
+for (const [why, name] of [
+  ['a path', '../../src/x-1791803973009.webp'],
+  ['a slash', 'a/b-1791803973009.webp'],
+  ['capital letters', 'Amit-1791803973009.webp'],
+  ['two hyphens in a row', 'amit--1791803973009.webp'],
+  ['no time part', 'amit.webp'],
+  ['a short time part', 'amit-12345.webp'],
+  ['an SVG extension', 'amit-1791803973009.svg'],
+  ['a PDF extension on a picture', 'amit-1791803973009.pdf'],
+  ['an enormous length', `${'a'.repeat(80)}-1791803973009.webp`],
+]) {
+  const r = call({ ...upBase, name });
+  check(
+    !r.ok && commits.length === commitsBefore + 1,
+    `a bad browser-chosen name is refused: ${why}`,
+    JSON.stringify(r),
+  );
+}
+check(
+  !call({ ...upBase, folder: 'resources', name: 'notes-1791803973010.webp', base64: pdf }).ok,
+  'a .webp name cannot carry PDF bytes',
+);
+const sleptBefore = sleeps.length;
+ghFault.put = 2;
+const flaky = call({ ...upBase, name: 'retry-1791803973011.webp' });
+check(
+  flaky.ok &&
+    repo.has('public/uploads/teachers/retry-1791803973011.webp') &&
+    sleeps.length === sleptBefore + 2,
+  'a GitHub hiccup (two 503 answers) is retried by the script itself and the upload succeeds',
+  JSON.stringify(flaky),
+);
+ghFault.put = 5;
+const down = call({ ...upBase, name: 'down-1791803973012.webp' });
+ghFault.put = 0;
+check(
+  !down.ok &&
+    !repo.has('public/uploads/teachers/down-1791803973012.webp') &&
+    /503/.test(down.error),
+  'when GitHub stays down the upload fails with a clear message (and nothing is stored)',
+  JSON.stringify(down),
+);
+const lockA = { ...locks };
+const savedItem = call({ action: 'getContent', token: T, path: 'courses/a-course.json' });
+const resave = call({
+  action: 'saveContent',
+  token: T,
+  path: 'courses/a-course.json',
+  json: JSON.stringify(savedItem.data),
+  sha: savedItem.sha,
+});
+check(
+  resave.ok && locks.taken === lockA.taken + 1 && locks.released === lockA.released + 1,
+  'saving content takes the same write queue',
+  JSON.stringify(resave),
+);
+check(
+  locks.taken === locks.released,
+  'every queue ticket that was taken was given back, even after failures',
 );
 
 console.log('\nfixed logins stay fixed');

@@ -363,6 +363,7 @@ async function readContent(path) {
 }
 
 /* ------------------------------------------------------------------ uploads */
+const UPLOAD_NAME_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*-\d{13}\.(webp|pdf)$/;
 function detectKind(buf) {
   if (
     buf.length > 12 &&
@@ -793,9 +794,26 @@ async function handle(p) {
       if (!kind) return { ok: false, error: 'Only WebP images and PDF files can be uploaded.' };
       if (kind === 'pdf' && folder !== 'resources')
         return { ok: false, error: 'PDFs can only be uploaded to resources.' };
-      const name = `${slugify(p.filename)}-${Date.now()}.${kind}`;
+      // The browser chooses the name (same rule as Code.gs / src/lib/upload-name.ts); without one, make it here.
+      const chosen = String(p.name || '');
+      if (
+        chosen &&
+        (chosen.length > 70 || !UPLOAD_NAME_RE.test(chosen) || !chosen.endsWith(`.${kind}`))
+      )
+        return { ok: false, error: 'Bad file name.' };
+      const name = chosen || `${slugify(p.filename)}-${Date.now()}.${kind}`;
       const file = within(UPLOADS, join(folder, name));
       if (!file) return { ok: false, error: 'Bad file name.' };
+      if (existsSync(file)) {
+        // The same upload repeated after a lost answer is success; a different file under that name is refused.
+        if ((await readFile(file)).equals(buf))
+          return { ok: true, path: `/uploads/${folder}/${name}`, local: true, repeated: true };
+        return {
+          ok: false,
+          code: 'name_taken',
+          error: 'A different file already has that name. Please upload it again.',
+        };
+      }
       await mkdir(dirname(file), { recursive: true });
       await writeFile(file, buf);
       console.log(`[dev-api] ${me.name} uploaded /uploads/${folder}/${name}`);

@@ -1,4 +1,5 @@
 import { callBackend, type ApiResult } from '../lib/api';
+import { uploadName } from '../lib/upload-name';
 
 export type Session = {
   token: string;
@@ -37,9 +38,10 @@ export function clearSession() {
 export async function call<T = Record<string, unknown>>(
   action: string,
   params: Record<string, string | number | boolean | undefined | null> = {},
+  timeoutMs = 60000,
 ): Promise<ApiResult<T>> {
   const s = loadSession();
-  const res = await callBackend<T>(action, { ...params, token: s?.token ?? '' }, 60000);
+  const res = await callBackend<T>(action, { ...params, token: s?.token ?? '' }, timeoutMs);
   if (res.code === 'auth') {
     clearSession();
     window.dispatchEvent(new Event('ccs:session-expired'));
@@ -56,7 +58,10 @@ export async function listItems(folder: string): Promise<Item[] | null> {
 }
 export const getItem = (path: string) => call<Item>('getContent', { path });
 
-export function saveItem(path: string, data: object, sha: string): Promise<SaveResult> {
+export async function saveItem(path: string, data: object, sha: string): Promise<SaveResult> {
+  // Never save a link to a picture that is still on its way, or that never arrived.
+  const problem = await unfinishedUploads(data);
+  if (problem) return { ok: false, error: problem };
   return call('saveContent', { path, json: JSON.stringify(data), sha });
 }
 export function deleteItem(path: string, sha: string): Promise<SaveResult> {
@@ -67,17 +72,48 @@ export function deleteItem(path: string, sha: string): Promise<SaveResult> {
  * rebuild (about 2 minutes), so previews use the bytes we just sent instead of a link that would 404.
  */
 const justUploaded = new Map<string, string>();
+/** Uploads still on their way, and the paths of uploads that gave up: a record that mentions either is not saved. */
+const running = new Map<string, Promise<ApiResult<{ path: string }>>>();
+const failed = new Set<string>();
 
-export async function uploadFile(folder: string, filename: string, base64: string) {
-  const res = await call<{ path: string; local?: boolean }>('uploadFile', {
-    folder,
-    filename,
-    base64,
-  });
-  if (res.ok && /\.webp$/i.test(res.path)) {
-    justUploaded.set(res.path, `data:image/webp;base64,${base64}`);
-  }
-  return res;
+/**
+ * Starts uploading a picture or PDF and returns its final address AT ONCE, so the form can use it straight away and the
+ * admin never waits on Google. The browser chooses the file name, which makes the upload safe to repeat: if Google
+ * loses the answer, the automatic retry is recognised by the server as the same file and nothing is stored twice.
+ * Saving waits for the upload to finish (see saveItem), so a record can never point at a file that is not there.
+ */
+export function startUpload(folder: string, filename: string, base64: string, ext: 'webp' | 'pdf') {
+  const name = uploadName(filename, ext);
+  const path = `/uploads/${folder}/${name}`;
+  if (ext === 'webp') justUploaded.set(path, `data:image/webp;base64,${base64}`);
+  const done = call<{ path: string }>('uploadFile', { folder, filename, name, base64 }, 45000).then(
+    (res) => {
+      running.delete(path);
+      if (!res.ok) {
+        failed.add(path);
+        justUploaded.delete(path);
+      }
+      return res;
+    },
+  );
+  running.set(path, done);
+  return { path, done };
+}
+
+function stringsIn(v: unknown, out: string[] = []): string[] {
+  if (typeof v === 'string') out.push(v);
+  else if (Array.isArray(v)) v.forEach((x) => stringsIn(x, out));
+  else if (v && typeof v === 'object') Object.values(v).forEach((x) => stringsIn(x, out));
+  return out;
+}
+
+/** Waits for any picture or PDF in `data` that is still uploading. Returns a message when one did not make it. */
+async function unfinishedUploads(data: unknown): Promise<string> {
+  const used = stringsIn(data);
+  for (const path of used) await running.get(path);
+  if (used.some((s) => failed.has(s)))
+    return 'A picture did not finish uploading, so nothing was saved. Please upload it again.';
+  return '';
 }
 
 /** Base path of the public site (admin lives at <base>/admin/). */

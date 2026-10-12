@@ -106,6 +106,12 @@ Choose any JPG, PNG or WebP photo (up to 25 MB), straight from your phone or cam
 - It **shrinks** the picture to the size the website needs and saves it in a modern, small format (WebP). This also
   removes hidden data such as the place where a photo was taken.
 - You see a message such as _Picture optimised: 2.4 MB → 86 KB_ and the preview appears at once.
+- The picture uploads in the background (the line under it says _Uploading…_, then _✓ Uploaded_). You can keep typing, and
+  **Save waits for the upload to finish**, so you never save a record without its picture. If Google is slow or loses an
+  answer, the page tries again by itself without storing the picture twice. If it cannot upload at all, you are told and
+  the previous picture stays.
+- After you press Save, a new picture is live on the website in about 2 minutes. If you open the admin again within those
+  2 minutes the preview says _Going live in about 2 minutes_: that is normal.
 - The website then makes even smaller copies for phones, so pages open fast on mobile data.
 
 You do not need to resize or compress anything yourself. Use a clear, well-lit picture in the shape suggested under the
@@ -198,12 +204,13 @@ Every landing page uses the same fixed layout.
 
 ## If something goes wrong
 
-| What you see                                  | What to do                                                                                                                       |
-| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| "Session expired"                             | Sign in again.                                                                                                                   |
-| Signing in is slow, or "The server is busy"   | Wait: Google's server is sometimes slow to answer (up to a minute). The page retries by itself, so do not click again and again. |
-| An image will not upload                      | Use a JPG, PNG or WebP picture. Use Chrome, Edge or Firefox.                                                                     |
-| "... is too long" or "... is required"        | Shorten the text or fill the field. The counters beside each box show the limit.                                                 |
-| "This page cannot be deleted"                 | The Home page and Settings are fixed pages: edit them, they cannot be removed.                                                   |
-| A PDF is too large                            | Keep it under 5 MB, or put it on Google Drive and paste the link.                                                                |
-| The change is not on the site after 5 minutes | Tell your developer. The site may have rejected the change and kept the old version.                                             |
+| What you see                                  | What to do                                                                                                                            |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| "Session expired"                             | Sign in again.                                                                                                                        |
+| Signing in is slow, or "The server is busy"   | Wait: Google's server is sometimes slow to answer (up to a minute). The page retries by itself, so do not click again and again.      |
+| An image will not upload                      | Use a JPG, PNG or WebP picture. Use Chrome, Edge or Firefox. If it says it could not upload, check your connection and pick it again. |
+| The picture does not show on the website yet  | Wait about 2 minutes after Save (the site is rebuilt). Check the line under the picture said _✓ Uploaded_ before you saved.           |
+| "... is too long" or "... is required"        | Shorten the text or fill the field. The counters beside each box show the limit.                                                      |
+| "This page cannot be deleted"                 | The Home page and Settings are fixed pages: edit them, they cannot be removed.                                                        |
+| A PDF is too large                            | Keep it under 5 MB, or put it on Google Drive and paste the link.                                                                     |
+| The change is not on the site after 5 minutes | Tell your developer. The site may have rejected the change and kept the old version.                                                  |

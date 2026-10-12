@@ -64,6 +64,8 @@ var PATH_RE = new RegExp('^(' + CONTENT_FOLDERS.join('|') + ')/[a-z0-9][a-z0-9_-
 var MAX_JSON_CHARS = 60 * 1024;
 var MAX_IMAGE_BYTES = 1.5 * 1024 * 1024;
 var MAX_PDF_BYTES = 5 * 1024 * 1024;
+// Uploaded file names are chosen by the browser: <slug>-<13-digit time>.<webp|pdf>. Same rule as src/lib/upload-name.ts.
+var UPLOAD_NAME_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*-\d{13}\.(webp|pdf)$/;
 
 // Sheet "Enquiries" columns (ID is a stable key: row numbers shift because new rows go on top).
 var COLS = ['Received (IST)', 'Name', 'Mobile', 'Email', 'Exam', 'Year of attempt', 'City', 'Message',
@@ -640,7 +642,11 @@ function needsStoredCopy_(rule) {
   return Object.keys(rule.fields).some(function (k) { return rule.fields[k].addOnly; });
 }
 
-function saveContent_(p, me) {
+/** Saves, deletes and uploads are queued one at a time: two commits reaching GitHub together are refused with a conflict. */
+function saveContent_(p, me) { return withLock_(function () { return saveContentLocked_(p, me); }); }
+function deleteContent_(p, me) { return withLock_(function () { return deleteContentLocked_(p, me); }); }
+
+function saveContentLocked_(p, me) {
   var path = String(p.path || '');
   if (!contentPathOk_(path)) return { ok: false, error: 'That path is not allowed.' };
   var jsonText = String(p.json || '');
@@ -681,7 +687,7 @@ function saveContent_(p, me) {
   return { ok: false, error: 'Could not save to GitHub (error ' + code + ').' };
 }
 
-function deleteContent_(p, me) {
+function deleteContentLocked_(p, me) {
   var path = String(p.path || '');
   if (!contentPathOk_(path)) return { ok: false, error: 'That path is not allowed.' };
   // settings/site.json and home/home.json must always exist: without them the site cannot be built.
@@ -710,14 +716,52 @@ function uploadFile_(p, me) {
   if (isPdf && bytes.length > MAX_PDF_BYTES) return { ok: false, error: 'PDF is too large (max 5 MB).' };
   if (isPdf && folder !== 'resources') return { ok: false, error: 'PDFs can only be uploaded to resources.' };
 
-  var slug = String(p.filename || 'file').toLowerCase().replace(/\.[a-z0-9]+$/i, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'file';
-  var name = slug + '-' + Date.now() + (isPdf ? '.pdf' : '.webp');
+  // The browser chooses the file name (so it knows the picture's address before the answer arrives); we only check it.
+  // Without a name (an old page), one is made here as before.
+  var ext = isPdf ? '.pdf' : '.webp';
+  var name = String(p.name || '');
+  if (name) {
+    if (name.length > 70 || !UPLOAD_NAME_RE.test(name) || name.slice(-ext.length) !== ext) return { ok: false, error: 'Bad file name.' };
+  } else {
+    var slug = String(p.filename || 'file').toLowerCase().replace(/\.[a-z0-9]+$/i, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40).replace(/-+$/, '') || 'file';
+    name = slug + '-' + Date.now() + ext;
+  }
   var path = 'public/uploads/' + folder + '/' + name;
-  var res = UrlFetchApp.fetch(ghUrl_(path), ghFetchParams_('put', {
-    message: 'admin: ' + me.name + ' uploaded ' + path, content: b64, branch: CONFIG.GITHUB_BRANCH
-  }));
-  if (res.getResponseCode() !== 201 && res.getResponseCode() !== 200) return { ok: false, error: 'Could not upload to GitHub (error ' + res.getResponseCode() + ').' };
-  return { ok: true, path: '/uploads/' + folder + '/' + name };
+  var publicPath = '/uploads/' + folder + '/' + name;
+  var wanted = gitBlobSha_(bytes);
+
+  // One GitHub write at a time (see withLock_): two commits arriving together are refused by GitHub.
+  return withLock_(function () {
+    var body = { message: 'admin: ' + me.name + ' uploaded ' + path, content: b64, branch: CONFIG.GITHUB_BRANCH };
+    var code = 0;
+    for (var attempt = 0; attempt < 3; attempt++) {
+      var res = UrlFetchApp.fetch(ghUrl_(path), ghFetchParams_('put', body));
+      code = res.getResponseCode();
+      if (code === 200 || code === 201) return { ok: true, path: publicPath };
+      if (code === 409 || code === 422) {
+        // Already there? When the answer to a first attempt was lost, the browser repeats the upload with the same
+        // name. If the stored file is byte-for-byte this one, that earlier attempt worked: report success, store nothing.
+        var existing = UrlFetchApp.fetch(ghUrl_(path, true), ghFetchParams_('get'));
+        if (existing.getResponseCode() === 200) {
+          if (JSON.parse(existing.getContentText()).sha === wanted) return { ok: true, path: publicPath, repeated: true };
+          return { ok: false, code: 'name_taken', error: 'A different file already has that name. Please upload it again.' };
+        }
+      } else if (code < 500) {
+        break; // a real refusal (bad token, no access): repeating will not help
+      }
+      if (attempt < 2) Utilities.sleep(800 * (attempt + 1));
+    }
+    return { ok: false, error: 'Could not upload to GitHub (error ' + code + ').' };
+  });
+}
+
+/** Git's own hash of a file, which is what GitHub reports as the file's "sha": tells whether a stored file is exactly these bytes. */
+function gitBlobSha_(bytes) {
+  var head = 'blob ' + bytes.length;
+  var data = [];
+  for (var i = 0; i < head.length; i++) data.push(head.charCodeAt(i));
+  data.push(0);
+  return toHex_(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_1, data.concat(bytes)));
 }
 
 /* ============================== Instagram live feed ============================== */

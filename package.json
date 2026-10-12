@@ -23,7 +23,8 @@
     "rules": "node scripts/content-rules.mjs",
     "test:images": "node scripts/test-images.mjs",
     "prune:uploads": "node scripts/prune-uploads.mjs",
-    "test:hero": "node scripts/test-hero.mjs"
+    "test:hero": "node scripts/test-hero.mjs",
+    "test:upload": "node scripts/test-upload.mjs"
   },
   "dependencies": {
     "@astrojs/preact": "^6.0.5",

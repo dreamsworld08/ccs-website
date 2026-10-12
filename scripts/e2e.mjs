@@ -1544,6 +1544,8 @@ console.log('\nAdmin panel (1280px)');
     'the admin is told what the optimiser did (size before and after, format, dimensions)',
     toastText,
   );
+  await page.waitForSelector('.drawer .imgfield[data-upload="done"]', { timeout: 20000 });
+  ok('the upload runs in the background and the field then says "Uploaded"');
   const uploads = (await readdir(join(ROOT, 'public/uploads/courses'))).filter((f) =>
     f.startsWith('e2e-test'),
   );
@@ -2405,6 +2407,172 @@ console.log(
     check(back.ok, 'the default password is restored for the rest of the run');
     token = back.token;
     await page.close();
+  }
+
+  // 6-8. uploads: the browser picks the file name, so a lost answer is retried safely, Save waits for a slow upload,
+  //      and a failed upload never leaves a record pointing at a missing file.
+  {
+    const probe = join(ROOT, 'dist', 'e2e-probe.png');
+    await sharp({ create: { width: 600, height: 400, channels: 3, background: '#0042F6' } })
+      .png()
+      .toFile(probe);
+    const uploadsDir = join(ROOT, 'public/uploads/courses');
+    const probeFiles = async () =>
+      (await readdir(uploadsDir)).filter((f) => f.startsWith('e2e-probe'));
+    const cleanProbe = async () => {
+      for (const f of await probeFiles()) await rm(join(uploadsDir, f));
+      for (const f of (await readdir(join(ROOT, 'src/content/courses'))).filter((x) =>
+        x.startsWith('e2e-upload-probe'),
+      ))
+        await rm(join(ROOT, 'src/content/courses', f));
+    };
+    await cleanProbe();
+    const newProbePage = async () => {
+      const page = await newPage(1280, false);
+      await open(page, '/admin/');
+      await page.type('form.login input[type=text]', LOGIN);
+      await page.type('form.login input[type=password]', PASSWORD);
+      await page.click('form.login button[type=submit]');
+      await page.waitForSelector('.topbar');
+      await page.goto(`${SITE}/admin/#courses`);
+      await page.waitForSelector('table.table tbody tr');
+      await page.evaluate(() =>
+        [...document.querySelectorAll('button')]
+          .find((b) => /^Add course$/.test(b.textContent))
+          .click(),
+      );
+      await page.waitForSelector('.drawer input#f-name');
+      await page.type('#f-name', 'E2E Upload Probe');
+      await page.type('#f-price', '₹1');
+      return page;
+    };
+    const pickProbe = async (page) => (await page.$('.drawer input[type=file]')).uploadFile(probe);
+    const clickSave = (page) =>
+      page.evaluate(() =>
+        [...document.querySelectorAll('.drawer-foot button')]
+          .find((b) => b.textContent === 'Save')
+          .click(),
+      );
+    const toasts = (page) => page.$$eval('.toast', (t) => t.map((x) => x.textContent).join(' | '));
+
+    // 6. the server stores the picture but the answer is lost: the retry carries the same name and stores nothing twice
+    {
+      const page = await newProbePage();
+      const names = [];
+      await page.setRequestInterception(true);
+      page.on('request', async (r) => {
+        if (isApi(r) && actionOf(r) === 'uploadFile') {
+          names.push(new URLSearchParams(r.postData()).get('name'));
+          if (names.length === 1) {
+            await fetch(API, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: r.postData(),
+            });
+            return r.respond({ status: 404, contentType: 'text/html', body: GOOGLE_404 });
+          }
+        }
+        r.continue().catch(() => {});
+      });
+      await pickProbe(page);
+      await page.waitForSelector('.drawer .imgfield[data-upload="done"]', { timeout: 30000 });
+      const stored = await probeFiles();
+      check(
+        names.length === 2 && names[0] === names[1] && /^e2e-probe-\d{13}\.webp$/.test(names[0]),
+        'a lost answer to an upload is retried by itself, with the same file name',
+        names.join(' / '),
+      );
+      check(
+        stored.length === 1 &&
+          stored[0] === names[0] &&
+          !/could not be uploaded/.test(await toasts(page)),
+        '...so exactly ONE file is stored and no error is shown',
+        stored.join(','),
+      );
+      await page.close();
+      await cleanProbe();
+    }
+
+    // 7. Save is pressed while a slow upload is still running: it waits, then saves the real address
+    {
+      const page = await newProbePage();
+      await page.setRequestInterception(true);
+      let held = 0;
+      page.on('request', async (r) => {
+        if (isApi(r) && actionOf(r) === 'uploadFile') {
+          held = Date.now();
+          await sleep(4000);
+        }
+        r.continue().catch(() => {});
+      });
+      await pickProbe(page);
+      await page.waitForSelector('.drawer .imgfield[data-upload="uploading"]', { timeout: 10000 });
+      const shown = await page.$eval('.drawer img.imgprev', (img) =>
+        img.src.startsWith('data:image/webp'),
+      );
+      const pressed = Date.now();
+      await clickSave(page);
+      await page.waitForFunction(() => !document.querySelector('.drawer'), { timeout: 30000 });
+      const waited = Date.now() - pressed;
+      const file = (await readdir(join(ROOT, 'src/content/courses'))).find((f) =>
+        f.startsWith('e2e-upload-probe'),
+      );
+      const saved = file
+        ? JSON.parse(await readFile(join(ROOT, 'src/content/courses', file), 'utf8'))
+        : {};
+      const stored = await probeFiles();
+      check(shown && held > 0, 'the new picture shows at once, before the upload has finished');
+      check(
+        waited >= 2500 &&
+          stored.length === 1 &&
+          saved.thumbnail === `/uploads/courses/${stored[0]}`,
+        'Save pressed during a slow upload waits for it, then saves the real picture address',
+        `waited ${waited} ms, thumbnail ${saved.thumbnail}, files ${stored.join(',')}`,
+      );
+      await page.close();
+      await cleanProbe();
+    }
+
+    // 8. every attempt fails: the field goes back to what it was, the admin is told, and nothing is saved that points nowhere
+    {
+      const page = await newProbePage();
+      let tries = 0;
+      await page.setRequestInterception(true);
+      page.on('request', (r) => {
+        if (isApi(r) && actionOf(r) === 'uploadFile') {
+          tries++;
+          return r.respond({ status: 404, contentType: 'text/html', body: GOOGLE_404 });
+        }
+        r.continue().catch(() => {});
+      });
+      await pickProbe(page);
+      await page.waitForFunction(
+        () =>
+          [...document.querySelectorAll('.toast')].some((t) =>
+            /could not be uploaded/.test(t.textContent),
+          ),
+        { timeout: 30000 },
+      );
+      const empty = await page.$eval('.drawer .imgprev', (el) =>
+        el.classList.contains('imgprev-empty'),
+      );
+      await clickSave(page);
+      await page.waitForFunction(() => !document.querySelector('.drawer'), { timeout: 15000 });
+      const file = (await readdir(join(ROOT, 'src/content/courses'))).find((f) =>
+        f.startsWith('e2e-upload-probe'),
+      );
+      const saved = file
+        ? JSON.parse(await readFile(join(ROOT, 'src/content/courses', file), 'utf8'))
+        : { thumbnail: 'x' };
+      check(
+        tries === 3 && empty && !saved.thumbnail && (await probeFiles()).length === 0,
+        'an upload that fails three times puts the old picture back, says so, and saves no link to a missing file',
+        `tries=${tries} empty=${empty} thumbnail=${saved.thumbnail}`,
+      );
+      await page.close();
+      await cleanProbe();
+    }
+    await rm(probe);
   }
 }
 
