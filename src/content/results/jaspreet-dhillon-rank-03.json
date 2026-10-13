@@ -1,12 +1,11 @@
 {
-  "student_name": "Jaspreet Dhillon",
-  "exam": "Punjab PCS",
-  "exam_year": "2025",
-  "rank_label": "Rank 03",
-  "photo": "/uploads/placeholders/person-4.svg",
+  "photo": "/uploads/results/whatsapp-image-2026-10-13-at-1-57-51-pm-1791880216202.webp",
+  "student_name": "AKSHITA GUPTA",
+  "exam": "UPS",
+  "exam_year": "2020",
+  "rank_label": "RANK 69",
   "quote": "Punjab GK classes alone were worth the fees.",
   "show_on_home": true,
   "order": 4,
-  "published": true,
-  "dummy": true
+  "published": true
 }
