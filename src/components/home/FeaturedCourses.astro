@@ -11,7 +11,7 @@ const all = await getCourses();
 const picked = home.featured_course_ids
   .map((id) => all.find((c) => c.id === id))
   .filter((c) => c !== undefined);
-const featured = (picked.length ? picked : all).slice(0, 3);
+const featured = (picked.length ? picked : all).slice(0, 4);
 ---
 
 <section class="panel bg-white border border-line">
@@ -25,7 +25,7 @@ const featured = (picked.length ? picked : all).slice(0, 3);
         See all courses <Icon name="arrow-right" size={18} />
       </a>
     </div>
-    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       {featured.map((c) => (
         <CourseCard course={c} />
       ))}

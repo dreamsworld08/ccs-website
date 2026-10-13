@@ -9,7 +9,9 @@ import {
 } from '../lib/enquiry';
 import { iconSvg } from '../lib/icons';
 
-export const EXAMS = ['UPSC CSE', 'Punjab PSC (PCS)', 'Punjab One Day Exams', 'Other'];
+import { EXAMS, examName } from '../lib/exams';
+
+export { EXAMS };
 
 export type FormContact = { years: string[]; whatsapp: string; phone: string };
 
@@ -36,7 +38,7 @@ export default function EnquiryForm(props: Props) {
   const [name, setName] = useState('');
   const [mobile, setMobile] = useState('');
   const [email, setEmail] = useState('');
-  const [exam, setExam] = useState(props.defaultExam ?? '');
+  const [exam, setExam] = useState(examName(props.defaultExam));
   const [year, setYear] = useState('');
   const [city, setCity] = useState('');
   const [message, setMessage] = useState('');

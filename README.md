@@ -85,12 +85,12 @@ field or section you change code, and the backend refuses it until you do.
 | ---------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | `settings/site.json`   | Contact details, social links, attempt years (+ the developer-only `show_free_tests` switch)                          |
 | `home/home.json`       | Hero (video or poster, search bar text, stat tiles; hero text on/off setting), founder message, featured courses, CTA |
-| `courses/*.json`       | Thumbnail, name, price (+ category and order set on add)                                                              |
+| `courses/*.json`       | Thumbnail, name, price (+ the exam, IAS / PCS / HPAS / HCS, and order, set on add)                                    |
 | `teachers/*.json`      | Name, subject, credential, bio, photo, intro video                                                                    |
 | `results/*.json`       | Student, exam, year, rank, photo, "show on home"                                                                      |
 | `reels/*.json`         | Instagram reel testimonials: link, student, rank label, cover picture                                                 |
 | `resources/*.json`     | Free resources (uploaded PDF **or** external link)                                                                    |
-| `exam-updates/*.json`  | Date, exam body, category, title, official link                                                                       |
+| `exam-updates/*.json`  | Date, exam (IAS / PCS / HPAS / HCS / Other), category, title, official link                                           |
 | `landing-pages/*.json` | Campaign pages (`/lp/<slug>/`); only **published** ones are built                                                     |
 | `tests/*.json`         | Free tests (hidden until the developer sets `show_free_tests` to `true` in `settings/site.json`)                      |
 
@@ -126,6 +126,30 @@ at `/search/?q=...`.
 - Matching is prefix-based, ranks title matches first, and understands friendly aliases ("pyq" finds "previous
   year", "hall ticket" finds admit cards). See `src/pages/search-index.json.ts` and `src/lib/search.ts`.
 - Result rows open the resource or official link in a new tab; student results open `/results/?q=<name>`.
+
+## The four exams (IAS, PCS, HPAS, HCS)
+
+The institute prepares students for four exams, and **one list** (`src/lib/exams.ts`) drives everything that names an exam:
+the Home page's featured courses (four cards), the course category (a course's exam), the exam-update exam and its filter on
+`/exam-updates/`, the enquiry forms (the exam dropdown, plus **Other**), landing pages and free tests. A course card's
+**Enquire** button opens the form with that card's exam selected.
+
+- **Old names stay valid.** The sheet holds enquiries saved as `UPSC CSE`, `Punjab PSC (PCS)` and `Punjab One Day Exams`, and an
+  older page or backend may still send them: `Code.gs` accepts both generations, and the Summary sheet counts both
+  (run `setup()` once more to add the new rows; it never deletes anything).
+- **Courses you already had are left exactly as they are.** A course saved with an older category (`UPSC CSE`, `Punjab PSC`,
+  `Optional`, `Test series`) is shown and filtered under the exam it belongs to (IAS or PCS, see `LEGACY_EXAMS` in
+  `src/lib/exams.ts`), stays editable in the admin (the content lock does not re-check a "set once" value it already holds),
+  and `Enquire` on it selects that exam. Only a NEW course must pick IAS, PCS, HPAS or HCS.
+- **An older backend must never lose a lead.** If the pasted `Code.gs` is older than the website, it refuses `IAS` / `HPAS`...
+  with "Please select the exam you are preparing for". The enquiry form then sends the same enquiry again in words the old
+  backend accepts (IAS as `UPSC CSE`, PCS as `Punjab PSC (PCS)`, HPAS / HCS as `Other` with the exam in the message). See
+  `src/lib/enquiry.ts`. An updated backend never triggers it.
+- **A version warning.** `Code.gs` reports `BACKEND_VERSION` when someone signs in; the admin compares it with
+  `REQUIRED_BACKEND_VERSION` (`src/config/backend.ts`) and shows a banner when the pasted code is older, so a forgotten paste
+  is noticed the same day. Raise both numbers (and `dev-server/server.mjs`) whenever the website starts to need something new
+  from `Code.gs`.
+- `Code.gs` and the local server keep a copy of the list; `npm run test:exams` fails if any copy drifts.
 
 ## YouTube videos (Home page)
 
@@ -254,7 +278,7 @@ npm run check:layout
 
 `test:gs` proves the Apps Script logic (validation, auth, the content lock, stable row ids, GitHub conflicts, uploads and
 their retry-safety, admin management). `test:upload` checks the upload file-name rule used by the browser, Code.gs and the
-local server; `test:youtube` checks reading and choosing the channel's videos and the offline fallback. It cannot prove Google's runtime accepts every call, so follow the test steps in
+local server; `test:exams` checks the exam list is identical in the site, Code.gs and the local server; `test:youtube` checks reading and choosing the channel's videos and the offline fallback. It cannot prove Google's runtime accepts every call, so follow the test steps in
 [SETUP.md](google-apps-script/SETUP.md) once on the real account.
 
 ## Deploy to GitHub Pages

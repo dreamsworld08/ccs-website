@@ -5,20 +5,24 @@ import ExamUpdateRow from '../components/ExamUpdateRow.astro';
 import FilterChips from '../components/FilterChips.astro';
 import ExamUpdatesSignup from '../islands/ExamUpdatesSignup';
 import { getExamUpdates, getSettings } from '../lib/site';
+import { EXAMS, examName } from '../lib/exams';
 
 const [updates, settings] = await Promise.all([getExamUpdates(), getSettings()]);
 const order = ['Notification', 'Exam date', 'Admit card', 'Answer key', 'Result', 'Syllabus'];
 const cats = order.filter((c) => updates.some((u) => u.data.category === c));
+const exams = EXAMS.filter((e) =>
+  updates.some((u) => (examName(u.data.exam_body) || 'Other') === e),
+);
 ---
 
 <Base
   title="Exam Updates"
-  description="Latest UPSC, PPSC, PSSSB and Punjab Police notifications, exam dates, admit cards, answer keys, results and syllabus."
+  description="Latest IAS, PCS, HPAS and HCS notifications, exam dates, admit cards, answer keys, results and syllabus."
 >
   <PageHeader
     kicker="Exam updates"
     title="Latest exam updates"
-    text="Notifications, dates, admit cards, answer keys and results from UPSC, PPSC, PSSSB and Punjab Police in one place."
+    text="Notifications, dates, admit cards, answer keys and results for IAS, PCS, HPAS and HCS in one place."
     tone="sky"
   >
     <div slot="aside">
@@ -34,7 +38,15 @@ const cats = order.filter((c) => updates.some((u) => u.data.category === c));
 
   <section class="panel bg-white border border-line" data-list-filter>
     <div class="container-x section-pad">
-      <div class="mb-6">
+      <div class="mb-6 flex flex-col gap-3">
+        {exams.length > 1 && (
+          <FilterChips
+            field="exam"
+            options={exams}
+            label="Filter updates by exam"
+            allLabel="All exams"
+          />
+        )}
         <FilterChips field="category" options={cats} label="Filter updates by category" />
       </div>
       <ul class="border-t border-line">
@@ -43,7 +55,7 @@ const cats = order.filter((c) => updates.some((u) => u.data.category === c));
         ))}
       </ul>
       <p class="mt-8 text-muted" data-empty hidden>
-        No updates in this category yet.
+        No updates match these filters yet.
       </p>
     </div>
   </section>

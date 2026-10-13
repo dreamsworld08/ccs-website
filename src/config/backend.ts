@@ -16,5 +16,13 @@ const LOCAL_URL = 'http://localhost:8787';
 export const BACKEND_URL: string =
   import.meta.env.PUBLIC_BACKEND_URL || (import.meta.env.DEV ? LOCAL_URL : PRODUCTION_URL);
 
+/**
+ * The backend (google-apps-script/Code.gs, pasted by hand into Google) reports a version when someone signs in to the
+ * admin. When it is lower than this, the admin shows a warning, because the pasted code is older than the website and some
+ * saves may be refused. Raise this together with BACKEND_VERSION in Code.gs and dev-server/server.mjs
+ * (`npm run test:gs` checks they agree).
+ */
+export const REQUIRED_BACKEND_VERSION = 2;
+
 export const BACKEND_CONFIGURED = !BACKEND_URL.startsWith('PASTE_');
 export const IS_LOCAL_BACKEND = BACKEND_URL.startsWith('http://localhost');

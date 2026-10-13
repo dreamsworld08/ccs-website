@@ -82,7 +82,7 @@ The **Reels** tab controls the swipeable reel carousel on the Results page.
 
 1. On Instagram open the reel, tap the **three dots**, then **Copy link**. (The Instagram account must be public.)
 2. **Reels > Add reel.** Paste the link, type the **student name**, and the **rank and exam** in this form:
-   `AIR 07 · UPSC CSE 2025` (rank first, then a dot).
+   `AIR 07 · IAS 2025` (rank first, then a dot).
 3. **Upload image** for the **cover picture**: a tall picture, for example a screenshot of the reel. Without one the
    card shows a coloured background.
 4. **Save.** Use the **↑ ↓** buttons to change the order, or untick **Published** to hide a reel.
@@ -152,7 +152,7 @@ developer clears unused files, so do not upload anything that must never be publ
 ## Post an exam update
 
 1. **Exam Updates > Add update.**
-2. Set the **date**, **exam body** (UPSC, PPSC...), **category** (Notification, Admit card, Result...) and **title**.
+2. Set the **date**, the **exam** (IAS, PCS, HPAS, HCS or Other), the **category** (Notification, Admit card, Result...) and the **title**. Visitors can filter the Exam Updates page by exam and by category.
 3. Paste the **official link**.
 4. **Save.** The newest three also appear on the Home page.
 
@@ -181,8 +181,19 @@ On phones the video is shown as the poster image with a Play button to save the 
 ## Courses
 
 You can change a course's **thumbnail, name and price**, add a course, delete one, reorder, or untick **Published**
-to hide it. The **category** is chosen when you add the course and cannot be changed afterwards.
-To choose the three courses shown on the Home page, use **Home Page > Featured courses**.
+to hide it. The **exam** (IAS, PCS, HPAS or HCS) is chosen when you add the course and cannot be changed afterwards: it
+is also the exam that is selected in the enquiry form when someone taps **Enquire** on that course.
+The Home page shows up to four courses (today the four exams: IAS, PCS, HPAS and HCS). To change them, use
+**Home Page > Featured courses**.
+
+### The four exams
+
+Chandigarh Civil Services prepares students for **IAS** (UPSC Civil Services), **PCS** (Punjab Civil Services), **HPAS**
+(Himachal Pradesh Administrative Services) and **HCS** (Haryana Civil Services). The same four names are used for the course
+cards, the **Which exam are you preparing for?** list in every enquiry form (plus **Other**), the exam updates and their
+filter. Enquiries you received before this change keep the exam name they were saved with (for example UPSC CSE).
+Each of the four cards has a picture made for it: replace it with **Upload image** whenever you like, and edit its text or
+**price** (it says "Enquire for fees" until you do).
 
 ## Landing pages (campaign pages for ads)
 

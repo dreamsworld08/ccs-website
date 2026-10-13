@@ -26,6 +26,7 @@
     "test:hero": "node scripts/test-hero.mjs",
     "test:upload": "node scripts/test-upload.mjs",
     "test:youtube": "node scripts/test-youtube.mjs",
+    "test:exams": "node scripts/test-exams.mjs",
     "youtube:refresh": "node scripts/refresh-youtube.mjs"
   },
   "dependencies": {

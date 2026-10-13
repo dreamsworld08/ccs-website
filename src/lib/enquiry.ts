@@ -89,20 +89,40 @@ export type EnquiryInput = {
   website?: string; // honeypot
 };
 
+/**
+ * A backend that has not been updated yet only knows the exam names the site used before IAS / PCS / HPAS / HCS and
+ * refuses the new ones with "Please select the exam you are preparing for". Rather than lose that enquiry, it is sent
+ * again in words the old backend accepts: IAS and PCS under their old names, HPAS and HCS as "Other" with the exam named
+ * in the message. An updated backend accepts the new names, so this never runs there.
+ */
+const OLD_BACKEND_EXAM: Record<string, string> = { IAS: 'UPSC CSE', PCS: 'Punjab PSC (PCS)' };
+
 export async function sendEnquiry(input: EnquiryInput) {
   const utm = getUtm();
-  const result = await callBackend('submitEnquiry', {
-    name: input.name.trim(),
-    mobile: input.mobile,
-    email: (input.email ?? '').trim(),
-    exam: input.exam,
-    year: input.year ?? '',
-    city: (input.city ?? '').trim(),
-    message: (input.message ?? '').trim(),
-    source: input.source,
-    website: input.website ?? '',
-    ...utm,
-  });
+  const send = (exam: string, message: string) =>
+    callBackend('submitEnquiry', {
+      name: input.name.trim(),
+      mobile: input.mobile,
+      email: (input.email ?? '').trim(),
+      exam,
+      year: input.year ?? '',
+      city: (input.city ?? '').trim(),
+      message,
+      source: input.source,
+      website: input.website ?? '',
+      ...utm,
+    });
+  const message = (input.message ?? '').trim();
+  let result = await send(input.exam, message);
+  if (
+    !result.ok &&
+    result.code === 'invalid' &&
+    /exam you are preparing for/i.test(result.error ?? '') &&
+    input.exam !== 'Other'
+  ) {
+    const old = OLD_BACKEND_EXAM[input.exam];
+    result = await send(old ?? 'Other', old ? message : `Exam: ${input.exam}. ${message}`.trim());
+  }
   if (result.ok) markSubmitted();
   return result;
 }

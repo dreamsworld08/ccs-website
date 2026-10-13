@@ -6,6 +6,8 @@ export type Session = {
   name: string;
   email: string;
   expiresAt: number;
+  /** The version the backend reported when this session started (0 = an old backend that reports none). */
+  backend?: number;
 };
 const KEY = 'ccs_admin_session';
 

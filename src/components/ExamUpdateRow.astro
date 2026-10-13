@@ -1,6 +1,7 @@
 ---
 import Icon from './Icon.astro';
 import { formatDate, safeHref } from '../lib/site';
+import { examName } from '../lib/exams';
 interface Props {
   update: {
     id: string;
@@ -13,6 +14,7 @@ interface Props {
 const { update, dark = false, compact = false } = Astro.props;
 const { date, exam_body, category, title, link } = update.data;
 const href = safeHref(link);
+const exam = examName(exam_body) || 'Other';
 ---
 
 <li
@@ -23,11 +25,12 @@ const href = safeHref(link);
   ]}
   data-item
   data-category={category}
+  data-exam={exam}
 >
   <p class:list={['mono text-[13px]', dark ? 'text-white/65' : 'text-muted']}>{formatDate(date)}</p>
   <div class="min-w-0">
     <div class="mb-2 flex flex-wrap gap-2">
-      <span class:list={['chip', dark ? '!bg-white/12 !text-white' : '']}>{exam_body}</span>
+      <span class:list={['chip', dark ? '!bg-white/12 !text-white' : '']}>{exam}</span>
       <span class:list={['chip chip-line', dark ? '!border-white/25 !text-white' : '']}>
         {category}
       </span>

@@ -329,7 +329,7 @@ const call = (params) => JSON.parse(doPost({ parameter: params }).text);
 const form = {
   name: 'Test Student',
   mobile: '9876500001',
-  exam: 'UPSC CSE',
+  exam: 'IAS',
   year: '2027',
   source: 'popup',
 };
@@ -570,7 +570,7 @@ check(
     action: 'submitEnquiry',
     name: 'Three Fields',
     mobile: '9876500011',
-    exam: 'Punjab PSC (PCS)',
+    exam: 'PCS',
     source: 'popup',
   }).ok &&
     enq.rows[1][1] === 'Three Fields' &&
@@ -660,11 +660,59 @@ check(
   'unknown id rejected',
 );
 
+console.log('\nthe exams an enquiry can name');
+{
+  const base = { action: 'submitEnquiry', name: 'Exam Check', source: 'popup' };
+  let n = 0;
+  const send = (exam) => call({ ...base, mobile: `98765001${String(10 + n++)}`, exam });
+  for (const exam of ['IAS', 'PCS', 'HPAS', 'HCS', 'Other'])
+    check(send(exam).ok, `"${exam}" is accepted`);
+  for (const exam of ['UPSC CSE', 'Punjab PSC (PCS)', 'Punjab One Day Exams'])
+    check(
+      send(exam).ok,
+      `the older name "${exam}" is still accepted (an older page, or an older backend answer)`,
+    );
+  for (const exam of ['', 'ias', 'I.A.S', 'Patwari', 'HAS', 'Punjab Police', 'IAS; drop table'])
+    check(send(exam).code === 'invalid', `${JSON.stringify(exam)} is refused as an exam`);
+  const rows = enq.rows.slice(1, 1 + n).map((r) => r[4]);
+  check(
+    rows.includes('HPAS') && rows.includes('HCS') && rows.includes('UPSC CSE'),
+    'the exam is stored as given, so old rows keep their old names and new rows use the new ones',
+  );
+}
+console.log('\nthe backend reports its version');
+{
+  const required = Number(
+    readFileSync(new URL('../src/config/backend.ts', import.meta.url), 'utf8').match(
+      /REQUIRED_BACKEND_VERSION = (\d+)/,
+    )?.[1],
+  );
+  const gs = Number(
+    readFileSync(new URL('../google-apps-script/Code.gs', import.meta.url), 'utf8').match(
+      /var BACKEND_VERSION = (\d+)/,
+    )?.[1],
+  );
+  const dev = Number(
+    readFileSync(new URL('../dev-server/server.mjs', import.meta.url), 'utf8').match(
+      /const BACKEND_VERSION = (\d+)/,
+    )?.[1],
+  );
+  check(
+    gs >= required && dev >= required && required > 0,
+    `Code.gs (${gs}) and the dev server (${dev}) are at least the version the admin requires (${required})`,
+  );
+  check(JSON.parse(doGet().text).backend === gs, 'the status page reports the version');
+  check(
+    session.backend === gs,
+    'signing in reports the version too (the admin panel compares it with what it requires)',
+  );
+}
+
 console.log('\ncontent via GitHub');
 const course = (o = {}) => ({
   name: 'A',
   price: '1',
-  category: 'UPSC CSE',
+  category: 'IAS',
   thumbnail: '',
   published: true,
   ...o,
@@ -878,14 +926,33 @@ check(
   'fields the admin screen does not have (layout, css, html...) are dropped, not stored',
 );
 check(
-  saveAs('courses/lock-cat.json', course({ category: 'Test series' })).ok &&
+  saveAs('courses/lock-cat.json', course({ category: 'HCS' })).ok &&
     saveAs(
       'courses/lock-cat.json',
-      course({ category: 'Optional' }),
+      course({ category: 'PCS' }),
       call({ action: 'getContent', token: T, path: 'courses/lock-cat.json' }).sha,
     ).ok &&
-    stored('courses/lock-cat.json').category === 'Test series',
+    stored('courses/lock-cat.json').category === 'HCS',
   'a course category is set once: later requests cannot change it',
+);
+// a course saved before the four exams keeps working: it can be edited and keeps its older category
+putRepoFile('courses/legacy-cat.json', course({ category: 'UPSC CSE', name: 'Old course' }));
+const legacyCourse = call({ action: 'getContent', token: T, path: 'courses/legacy-cat.json' });
+check(
+  saveAs(
+    'courses/legacy-cat.json',
+    { ...legacyCourse.data, name: 'Renamed', price: '2' },
+    legacyCourse.sha,
+  ).ok &&
+    stored('courses/legacy-cat.json').name === 'Renamed' &&
+    stored('courses/legacy-cat.json').price === '2' &&
+    stored('courses/legacy-cat.json').category === 'UPSC CSE',
+  'a course saved before the four exams (category "UPSC CSE") can still be edited, and keeps that category',
+);
+check(
+  !saveAs('courses/new-legacy.json', course({ category: 'UPSC CSE' })).ok &&
+    !saveAs('courses/new-legacy2.json', course({ category: 'Test series' })).ok,
+  'a NEW course cannot use an older category: it must be IAS, PCS, HPAS or HCS',
 );
 for (const [label, patch] of [
   ['over-long text', { name: 'x'.repeat(71) }],
@@ -1005,7 +1072,7 @@ check(
     show_on_main_site: false,
     hero_headline: 'Head',
     hero_bullets: ['a', 'b', 'c'],
-    default_exam: 'UPSC CSE',
+    default_exam: 'IAS',
     benefits: [],
     faqs: [],
     show_toppers: false,
@@ -1016,7 +1083,7 @@ check(
       internal_name: 'LP',
       hero_headline: 'Head',
       hero_bullets: ['a', 'b', 'c', 'd'],
-      default_exam: 'UPSC CSE',
+      default_exam: 'IAS',
     }).ok,
   'list sizes are capped (a landing page has at most 3 tick points)',
 );
@@ -1025,7 +1092,7 @@ check(
     slug: 'Not_Valid',
     internal_name: 'x',
     hero_headline: 'h',
-    default_exam: 'UPSC CSE',
+    default_exam: 'IAS',
   }).ok,
   'landing page addresses are lowercase letters, numbers and hyphens only',
 );

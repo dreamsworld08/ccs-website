@@ -1,3 +1,4 @@
+import { EXAMS as EXAM_CHOICES, OFFERED_EXAMS } from '../lib/exams';
 /** Field and table definitions that drive every content tab in /admin. */
 
 export type FieldType =
@@ -61,7 +62,7 @@ export type CollectionDef = {
   defaults: () => Record<string, any>;
 };
 
-export const EXAMS = ['UPSC CSE', 'Punjab PSC (PCS)', 'Punjab One Day Exams', 'Other'];
+export const EXAMS = EXAM_CHOICES;
 export const STATUSES = ['Open', 'Contacted', 'Resolved', 'Enrolled'] as const;
 const url = (key: string, label: string, extra: Partial<Field> = {}): Field => ({
   key,
@@ -102,21 +103,21 @@ export const COURSES: CollectionDef = {
     },
     {
       key: 'category',
-      label: 'Category',
+      label: 'Exam',
       type: 'select',
       required: true,
       addOnly: true,
-      options: ['UPSC CSE', 'Punjab PSC', 'Punjab One Day', 'Optional', 'Test series'],
-      help: 'Set when adding; cannot be changed afterwards.',
+      options: [...OFFERED_EXAMS],
+      help: 'Which exam this course is for. The enquiry form opens with this exam selected. Set when adding; cannot be changed afterwards.',
     },
   ],
   columns: [
     { key: 'thumbnail', label: 'Thumbnail', kind: 'image' },
     { key: 'name', label: 'Name' },
     { key: 'price', label: 'Price', kind: 'mono' },
-    { key: 'category', label: 'Category' },
+    { key: 'category', label: 'Exam' },
   ],
-  defaults: () => ({ thumbnail: '', name: '', price: '', category: 'UPSC CSE', published: true }),
+  defaults: () => ({ thumbnail: '', name: '', price: '', category: 'IAS', published: true }),
 };
 
 export const TEACHERS: CollectionDef = {
@@ -191,15 +192,7 @@ export const RESULTS: CollectionDef = {
       type: 'text',
       required: true,
       max: 40,
-      suggestions: [
-        'UPSC CSE',
-        'Punjab PCS',
-        'Naib Tehsildar',
-        'PSSSB Patwari',
-        'PSSSB Clerk',
-        'Punjab Police',
-        'Excise & Taxation',
-      ],
+      suggestions: [...OFFERED_EXAMS],
       help: 'These become the filter buttons on the Results page.',
     },
     { key: 'exam_year', label: 'Year', type: 'text', required: true, max: 4, placeholder: '2025' },
@@ -268,7 +261,7 @@ export const REELS: CollectionDef = {
       label: 'Rank and exam',
       type: 'text',
       max: 50,
-      placeholder: 'AIR 07 · UPSC CSE 2025',
+      placeholder: 'AIR 07 · IAS 2025',
       help: 'Shown on the card. Put the rank first, then a dot, then the exam.',
     },
     {
@@ -360,10 +353,11 @@ export const EXAM_UPDATES: CollectionDef = {
     { key: 'date', label: 'Date', type: 'date', required: true },
     {
       key: 'exam_body',
-      label: 'Exam body',
+      label: 'Exam',
       type: 'select',
       required: true,
-      options: ['UPSC', 'PPSC', 'PSSSB', 'Punjab Police', 'Other'],
+      options: EXAMS,
+      help: 'The exam this update is about. Visitors can filter the Exam Updates page by it.',
     },
     {
       key: 'category',
@@ -377,13 +371,13 @@ export const EXAM_UPDATES: CollectionDef = {
   ],
   columns: [
     { key: 'date', label: 'Date', kind: 'date' },
-    { key: 'exam_body', label: 'Body' },
+    { key: 'exam_body', label: 'Exam' },
     { key: 'category', label: 'Category' },
     { key: 'title', label: 'Title' },
   ],
   defaults: () => ({
     date: new Date().toLocaleDateString('sv-SE'),
-    exam_body: 'UPSC',
+    exam_body: 'IAS',
     category: 'Notification',
     title: '',
     link: '',
@@ -414,7 +408,7 @@ export const TESTS: CollectionDef = {
   ],
   defaults: () => ({
     title: '',
-    exam: 'UPSC CSE',
+    exam: 'IAS',
     question_count: 100,
     duration_min: 120,
     test_url: '',
@@ -510,7 +504,7 @@ export const LANDING_DEFAULTS = () => ({
   hero_subtext: '',
   hero_bullets: [''],
   countdown_date: '',
-  default_exam: 'UPSC CSE',
+  default_exam: 'IAS',
   benefits: [
     { title: '', text: '' },
     { title: '', text: '' },
@@ -668,9 +662,9 @@ export const HOME_SECTIONS: { title: string; note?: string; fields: Field[] }[] 
     fields: [
       {
         key: 'featured_course_ids',
-        label: 'Three courses shown on the Home page',
+        label: 'Courses shown on the Home page (up to four)',
         type: 'coursePick',
-        maxItems: 3,
+        maxItems: 4,
       },
     ],
   },

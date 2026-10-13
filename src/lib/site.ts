@@ -1,4 +1,5 @@
 import { getCollection, getEntry } from 'astro:content';
+import { examName } from './exams';
 
 /** Base path without a trailing slash ('' on a custom domain, '/ccs-website' on github.io). */
 export const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -125,12 +126,8 @@ export function formatDate(iso: string): string {
   return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-export const EXAM_OPTIONS = ['UPSC CSE', 'Punjab PSC (PCS)', 'Punjab One Day Exams', 'Other'];
-
-/** Maps a course category to the exam preselected in the enquiry form. */
+/** The exam preselected in the enquiry form for a course category (the category is the exam: IAS, PCS, HPAS or HCS). */
 export function examForCategory(category: string): string {
-  if (category === 'UPSC CSE' || category === 'Optional') return 'UPSC CSE';
-  if (category === 'Punjab PSC') return 'Punjab PSC (PCS)';
-  if (category === 'Punjab One Day') return 'Punjab One Day Exams';
-  return ''; // e.g. "Test series": let the student choose
+  const exam = examName(category);
+  return exam === 'Other' ? '' : exam; // "Other": let the student choose
 }

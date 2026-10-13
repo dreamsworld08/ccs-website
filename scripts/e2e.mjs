@@ -144,7 +144,7 @@ console.log('\nPopup + enquiry form (mobile 390px)');
   popupMobile = num;
   await page.type('dialog[open] input[name=name]', 'E2E Popup Tester');
   await page.type('dialog[open] input[name=mobile]', '12345');
-  await page.select('dialog[open] select[name=exam]', 'UPSC CSE');
+  await page.select('dialog[open] select[name=exam]', 'IAS');
   await page.select('dialog[open] select[name=year]', '2027');
   await page.click('dialog[open] button[type=submit]');
   await sleep(200);
@@ -168,7 +168,7 @@ console.log('\nPopup + enquiry form (mobile 390px)');
     !!row &&
       row.status === 'Open' &&
       row.source === 'popup' &&
-      row.exam === 'UPSC CSE' &&
+      row.exam === 'IAS' &&
       row.year === '2027',
     'row saved with Status=Open, source=popup',
     JSON.stringify(row),
@@ -184,7 +184,7 @@ console.log('\nPopup + enquiry form (mobile 390px)');
   await page.waitForSelector('dialog[open] form');
   await page.type('dialog[open] input[name=name]', 'Second Try');
   await page.type('dialog[open] input[name=mobile]', freshMobile());
-  await page.select('dialog[open] select[name=exam]', 'UPSC CSE');
+  await page.select('dialog[open] select[name=exam]', 'IAS');
   await page.select('dialog[open] select[name=year]', '2027');
   await page.click('dialog[open] button[type=submit]');
   await page.waitForSelector('dialog[open] [role=alert]');
@@ -234,13 +234,13 @@ console.log('\nEnquiry form: only name, mobile and exam are mandatory');
   const num = freshMobile();
   await page.type('dialog[open] input[name=name]', 'Three Fields Only');
   await page.type('dialog[open] input[name=mobile]', num);
-  await page.select('dialog[open] select[name=exam]', 'Punjab PSC (PCS)');
+  await page.select('dialog[open] select[name=exam]', 'PCS');
   await page.click('dialog[open] button[type=submit]');
   await page.waitForSelector('dialog[open] [role=status]', { timeout: 8000 });
   const row = (await enquiryRows()).find((r) => r.mobile === num);
   check(
     row?.name === 'Three Fields Only' &&
-      row.exam === 'Punjab PSC (PCS)' &&
+      row.exam === 'PCS' &&
       row.year === '' &&
       row.email === '' &&
       row.city === '' &&
@@ -275,7 +275,7 @@ console.log('\nExam-updates signup, landing page, course-prefilled popup');
   await page.waitForSelector('#eu-page-name');
   await page.type('#eu-page-name', 'E2E Signup');
   await page.type('#eu-page-mobile', num);
-  await page.select('#eu-page-exam', 'Punjab One Day Exams');
+  await page.select('#eu-page-exam', 'HPAS');
   await page.click('form[aria-label="Register for regular exam updates"] button[type=submit]');
   await page.waitForSelector('[role=status]', { timeout: 8000 });
   const row = (await enquiryRows()).find((r) => r.mobile === num);
@@ -289,7 +289,7 @@ console.log('\nExam-updates signup, landing page, course-prefilled popup');
   const lp = await newPage();
   await open(lp, '/lp/upsc-scholarship-test-2027/');
   const preselected = await lp.$eval('#lp-exam', (s) => s.value);
-  check(preselected === 'UPSC CSE', 'landing page pre-selects the exam', preselected);
+  check(preselected === 'IAS', 'landing page pre-selects the exam', preselected);
   check(!(await lp.$('nav[aria-label="Main"]')), 'landing page has no main menu');
   const lpNum = freshMobile();
   await lp.type('#lp-name', 'E2E Landing');
@@ -333,11 +333,226 @@ console.log('\nExam-updates signup, landing page, course-prefilled popup');
   const cp = await newPage();
   await open(cp, '/courses/');
   await sleep(400);
-  await click(cp, 'article[data-category="Punjab PSC"] [data-open-enquiry]');
+  await click(cp, 'article[data-category="PCS"] [data-open-enquiry]');
   await cp.waitForSelector('dialog[open] select[name=exam]');
   const ex = await cp.$eval('dialog[open] select[name=exam]', (s) => s.value);
-  check(ex === 'Punjab PSC (PCS)', 'course Enquire pre-selects the exam', ex);
+  check(ex === 'PCS', 'course Enquire pre-selects the exam', ex);
   await cp.close();
+}
+
+console.log('\nThe four exams: Home courses, Courses page, exam updates and the enquiry form');
+{
+  const page = await newPage(1280, false);
+  // keep the enquiry popup's 50%-scroll auto-open out of the way of this test
+  await page.evaluateOnNewDocument(() => sessionStorage.setItem('ccs_popup_shown', '1'));
+  await open(page, '/');
+  const home = await page.evaluate(() => {
+    const sec = [...document.querySelectorAll('h2')]
+      .find((h) => /courses we offer/i.test(h.textContent))
+      ?.closest('section');
+    return [...(sec?.querySelectorAll('article[data-category]') ?? [])].map((a) => ({
+      cat: a.dataset.category,
+      name: a.querySelector('h3')?.textContent.trim(),
+      exam: a.querySelector('[data-open-enquiry]')?.dataset.exam,
+      picture: !!a.querySelector('img'),
+    }));
+  });
+  check(
+    home.map((c) => c.cat).join() === 'IAS,PCS,HPAS,HCS',
+    'Home features the four exams as its courses, in order',
+    JSON.stringify(home),
+  );
+  check(
+    home.every((c) => c.exam === c.cat && c.picture && c.name.startsWith(c.cat)),
+    'each card has a picture, names its exam, and opens the enquiry form with that exam selected',
+    JSON.stringify(home),
+  );
+  for (const exam of ['IAS', 'PCS', 'HPAS', 'HCS']) {
+    await page.evaluate(
+      (e) => document.querySelector(`article[data-category="${e}"] [data-open-enquiry]`).click(),
+      exam,
+    );
+    await page.waitForSelector('dialog[open] select[name=exam]');
+    const v = await page.$eval('dialog[open] select[name=exam]', (s) => s.value);
+    check(v === exam, `"Enquire" on the ${exam} card opens the form with ${exam} selected`, v);
+    await page.keyboard.press('Escape');
+    await sleep(250);
+  }
+
+  await page.evaluate(() => document.querySelector('header [data-open-enquiry]').click());
+  await page.waitForSelector('dialog[open] select[name=exam]');
+  const opts = await page.$$eval('dialog[open] select[name=exam] option', (os) =>
+    os.map((o) => o.textContent.trim()),
+  );
+  check(
+    opts.join('|') === 'Select exam|IAS|PCS|HPAS|HCS|Other',
+    'the enquiry form offers IAS, PCS, HPAS, HCS and Other',
+    opts.join('|'),
+  );
+  const num = freshMobile();
+  await page.type('dialog[open] input[name=name]', 'E2E HPAS');
+  await page.type('dialog[open] input[name=mobile]', num);
+  await page.select('dialog[open] select[name=exam]', 'HPAS');
+  await page.click('dialog[open] button[type=submit]');
+  await page.waitForSelector('dialog[open] [role=status]', { timeout: 15000 });
+  const saved = (await enquiryRows()).find((r) => r.mobile === num);
+  check(saved?.exam === 'HPAS', 'an HPAS enquiry is saved as HPAS', JSON.stringify(saved));
+
+  await open(page, '/courses/');
+  const chips = await page.$$eval('[data-chip-group="category"] [data-chip]', (els) =>
+    els.map((e) => e.dataset.chip),
+  );
+  check(
+    chips.join('|') === '|IAS|PCS|HPAS|HCS',
+    'the Courses page filters by the four exams, in that order',
+    chips.join('|'),
+  );
+  const titles = await page.$$eval('article[data-category] h2', (els) =>
+    els.map((e) => e.textContent.trim()),
+  );
+  check(
+    titles.length >= 5 && !titles.some((t) => /patwari|clerk|naib tehsildar/i.test(t)),
+    'the Patwari & Clerk and Naib Tehsildar courses are gone',
+    titles.join(' | '),
+  );
+  await page.click('[data-chip-group="category"] [data-chip="HCS"]');
+  const hcs = await page.$$eval('article[data-category]', (els) =>
+    els.filter((e) => !e.hidden).map((e) => e.dataset.category),
+  );
+  check(hcs.length === 1 && hcs[0] === 'HCS', 'choosing HCS shows only the HCS course', hcs.join());
+
+  await open(page, '/exam-updates/');
+  const examChips = await page.$$eval('[data-chip-group="exam"] [data-chip]', (els) =>
+    els.map((e) => e.dataset.chip),
+  );
+  check(
+    examChips[0] === '' && examChips.includes('IAS') && examChips.includes('PCS'),
+    'the Exam Updates page can be filtered by exam as well as by category',
+    examChips.join('|'),
+  );
+  const visible = () =>
+    page.$$eval('[data-item]', (els) => els.filter((e) => !e.hidden).map((e) => e.dataset.exam));
+  const everything = (await visible()).length;
+  await page.click('[data-chip-group="exam"] [data-chip="IAS"]');
+  const ias = await visible();
+  check(
+    ias.length > 0 && ias.length < everything && ias.every((e) => e === 'IAS'),
+    'choosing IAS shows only the IAS updates',
+    JSON.stringify(ias),
+  );
+  await page.click('[data-chip-group="category"] [data-chip="Syllabus"]');
+  const both = await page.$$eval('[data-item]', (els) =>
+    els.filter((e) => !e.hidden).map((e) => `${e.dataset.exam}/${e.dataset.category}`),
+  );
+  check(
+    both.length > 0 && both.every((x) => x === 'IAS/Syllabus'),
+    'the exam and category filters work together',
+    both.join(),
+  );
+  await page.close();
+
+  // a backend that has not been updated refuses the new exam names: the enquiry must still arrive
+  const olderBackend = async (exam, expectExam, expectMessage) => {
+    const p = await newPage(390);
+    await p.evaluateOnNewDocument(() => sessionStorage.setItem('ccs_popup_shown', '1'));
+    const seen = [];
+    await p.setRequestInterception(true);
+    p.on('request', (r) => {
+      const body = new URLSearchParams(r.postData() ?? '');
+      if (
+        r.method() === 'POST' &&
+        r.url().startsWith(API) &&
+        body.get('action') === 'submitEnquiry'
+      ) {
+        const sent = body.get('exam');
+        seen.push([sent, body.get('message')]);
+        if (!['UPSC CSE', 'Punjab PSC (PCS)', 'Punjab One Day Exams', 'Other'].includes(sent))
+          return r.respond({
+            status: 200,
+            contentType: 'application/json',
+            headers: { 'access-control-allow-origin': '*' },
+            body: JSON.stringify({
+              ok: false,
+              code: 'invalid',
+              error: 'Please select the exam you are preparing for.',
+            }),
+          });
+      }
+      r.continue().catch(() => {});
+    });
+    await open(p, '/');
+    await sleep(300);
+    await click(p, 'header [data-open-enquiry]');
+    await p.waitForSelector('dialog[open] form');
+    const n = freshMobile();
+    await p.type('dialog[open] input[name=name]', 'Older Backend');
+    await p.type('dialog[open] input[name=mobile]', n);
+    await p.select('dialog[open] select[name=exam]', exam);
+    await p.click('dialog[open] button[type=submit]');
+    await p.waitForSelector('dialog[open] [role=status]', { timeout: 15000 });
+    const row = (await enquiryRows()).find((r) => r.mobile === n);
+    check(
+      seen.length === 2 &&
+        seen[0][0] === exam &&
+        row?.exam === expectExam &&
+        (row?.message ?? '').startsWith(expectMessage),
+      `with an older backend, an ${exam} enquiry is not lost: it is re-sent as "${expectExam}"${expectMessage ? ' with the exam in the message' : ''}`,
+      JSON.stringify({ seen, row }),
+    );
+    await p.close();
+  };
+  await olderBackend('HPAS', 'Other', 'Exam: HPAS.');
+  await olderBackend('IAS', 'UPSC CSE', '');
+}
+
+console.log('\nAdmin: a warning when the pasted backend is older than the website');
+{
+  const signIn = async (page) => {
+    await open(page, '/admin/');
+    await page.type('form.login input[type=text]', LOGIN);
+    await page.type('form.login input[type=password]', PASSWORD);
+    await page.click('form.login button[type=submit]');
+    await page.waitForSelector('.topbar', { timeout: 20000 });
+  };
+  const current = await newPage(1280, false);
+  await signIn(current);
+  check(
+    !(await current.$('.content .banner-warn')),
+    'with an up-to-date backend there is no warning',
+  );
+  await current.close();
+
+  const older = await newPage(1280, false);
+  await older.setRequestInterception(true);
+  older.on('request', async (r) => {
+    const body = new URLSearchParams(r.postData() ?? '');
+    if (r.method() === 'POST' && r.url().startsWith(API) && body.get('action') === 'login') {
+      // what an older backend answers: the same sign-in, without a version
+      const real = await (
+        await fetch(API, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: r.postData(),
+        })
+      ).json();
+      delete real.backend;
+      return r.respond({
+        status: 200,
+        contentType: 'application/json',
+        headers: { 'access-control-allow-origin': '*' },
+        body: JSON.stringify(real),
+      });
+    }
+    r.continue().catch(() => {});
+  });
+  await signIn(older);
+  const warning = await older.$eval('.content .banner-warn', (b) => b.textContent).catch(() => '');
+  check(
+    /older than the website/.test(warning) && /Code\.gs/.test(warning),
+    'signing in to an older backend shows a warning that says what to do',
+    warning.slice(0, 120),
+  );
+  await older.close();
 }
 
 console.log('\nFilters (client-side)');
@@ -681,10 +896,14 @@ for (const [w, h, mobile] of [
   const chips = await page.$$eval('[data-hero] .filter-chip', (els) =>
     els.map((e) => e.textContent.trim()),
   );
+  // whatever the admin has set under Home Page > popular searches (read from the content the site was built from)
+  const popular = JSON.parse(
+    await readFile(join(ROOT, 'src/content/home/home.json'), 'utf8'),
+  ).hero_search_popular.slice(0, 6);
   check(
-    chips.join('|') === 'Patwari|PYQ|Admit card|Current affairs|Punjab GK',
+    popular.length > 0 && chips.join('|') === popular.join('|'),
     'popular searches come from the admin content',
-    chips.join('|'),
+    `${chips.join('|')} vs ${popular.join('|')}`,
   );
   await page.type('#hero-search-input', 'pyq');
   await page.waitForSelector('#hero-search-list [role=option]');
@@ -1537,16 +1756,16 @@ console.log('\nThe lock: the admin can change content, never layout or features'
   const course = {
     name: 'E2E Lock',
     price: '1',
-    category: 'Test series',
+    category: 'HCS',
     thumbnail: '',
     published: true,
   };
   const made = await save('courses/e2e-lock.json', course);
   const madeItem = await api('getContent', { token, path: 'courses/e2e-lock.json' });
-  await save('courses/e2e-lock.json', { ...course, category: 'Optional' }, madeItem.sha);
+  await save('courses/e2e-lock.json', { ...course, category: 'PCS' }, madeItem.sha);
   const kept = JSON.parse(await readText('courses/e2e-lock.json'));
   check(
-    made.ok && kept.category === 'Test series',
+    made.ok && kept.category === 'HCS',
     "a course's category cannot be changed after it is created",
     kept.category,
   );
@@ -2875,7 +3094,7 @@ console.log('\nSecurity edge cases (API)');
     api('submitEnquiry', {
       name: '=cmd|calc',
       mobile: dupe,
-      exam: 'UPSC CSE',
+      exam: 'IAS',
       year: '2027',
       consent: 'yes',
       source: 'popup',
@@ -2887,7 +3106,7 @@ console.log('\nSecurity edge cases (API)');
   const hp = await api('submitEnquiry', {
     name: 'Bot',
     mobile: freshMobile(),
-    exam: 'UPSC CSE',
+    exam: 'IAS',
     year: '2027',
     consent: 'yes',
     website: 'http://spam',
@@ -2901,7 +3120,7 @@ console.log('\nSecurity edge cases (API)');
       await api('submitEnquiry', {
         name: 'X',
         mobile: '1234567890',
-        exam: 'UPSC CSE',
+        exam: 'IAS',
         year: '2027',
         consent: 'yes',
       })

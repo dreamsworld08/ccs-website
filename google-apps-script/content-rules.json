@@ -175,9 +175,9 @@
         "max": 600
       },
       "featured_course_ids": {
-        "label": "Three courses shown on the Home page",
+        "label": "Courses shown on the Home page (up to four)",
         "type": "coursePick",
-        "maxItems": 3
+        "maxItems": 4
       },
       "yt_show": {
         "label": "Show this section on the Home page",
@@ -294,9 +294,10 @@
         "type": "select",
         "required": true,
         "options": [
-          "UPSC CSE",
-          "Punjab PSC (PCS)",
-          "Punjab One Day Exams",
+          "IAS",
+          "PCS",
+          "HPAS",
+          "HCS",
           "Other"
         ]
       },
@@ -376,15 +377,14 @@
         "max": 20
       },
       "category": {
-        "label": "Category",
+        "label": "Exam",
         "type": "select",
         "required": true,
         "options": [
-          "UPSC CSE",
-          "Punjab PSC",
-          "Punjab One Day",
-          "Optional",
-          "Test series"
+          "IAS",
+          "PCS",
+          "HPAS",
+          "HCS"
         ],
         "addOnly": true
       }
@@ -574,14 +574,14 @@
         "required": true
       },
       "exam_body": {
-        "label": "Exam body",
+        "label": "Exam",
         "type": "select",
         "required": true,
         "options": [
-          "UPSC",
-          "PPSC",
-          "PSSSB",
-          "Punjab Police",
+          "IAS",
+          "PCS",
+          "HPAS",
+          "HCS",
           "Other"
         ]
       },
@@ -627,9 +627,10 @@
         "type": "select",
         "required": true,
         "options": [
-          "UPSC CSE",
-          "Punjab PSC (PCS)",
-          "Punjab One Day Exams",
+          "IAS",
+          "PCS",
+          "HPAS",
+          "HCS",
           "Other"
         ]
       },

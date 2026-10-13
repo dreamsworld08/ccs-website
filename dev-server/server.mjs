@@ -47,7 +47,11 @@ const UPLOAD_FOLDERS = [
   'misc',
 ];
 const PATH_RE = new RegExp(`^(${CONTENT_FOLDERS.join('|')})/[a-z0-9][a-z0-9_-]{0,80}\\.json$`);
-const EXAMS = ['UPSC CSE', 'Punjab PSC (PCS)', 'Punjab One Day Exams', 'Other'];
+// Same lists as google-apps-script/Code.gs and src/lib/exams.ts (`npm run test:exams` checks they agree).
+const EXAMS = ['IAS', 'PCS', 'HPAS', 'HCS', 'Other'];
+const LEGACY_EXAMS = ['UPSC CSE', 'Punjab PSC (PCS)', 'Punjab One Day Exams'];
+// Like BACKEND_VERSION in Code.gs: the admin panel warns when the backend reports less than it requires.
+const BACKEND_VERSION = 2;
 const TOKEN_TTL_MS = 12 * 60 * 60 * 1000;
 const MAX_BODY = 9 * 1024 * 1024;
 const MAX_JSON_BYTES = 60 * 1024;
@@ -216,7 +220,7 @@ function seedEnquiries() {
       name: names[i % names.length],
       mobile: `${['98', '97', '70', '62'][i % 4]}${String(10000000 + ((i * 7919) % 89999999)).slice(0, 8)}`,
       email: i % 3 === 0 ? `student${i + 1}@example.com` : '',
-      exam: EXAMS[i % 3 === 2 ? 2 : i % 2],
+      exam: EXAMS[i % 4 === 3 ? 3 : i % 3],
       year: source === 'exam_updates_signup' ? '' : years[i % 3],
       city: cities[i % cities.length],
       message: i % 4 === 0 ? 'Please call after 6 pm.' : '',
@@ -285,7 +289,7 @@ async function submitEnquiry(p) {
   if (name.length < 2) return { ok: false, code: 'invalid', error: 'Please enter your name.' };
   if (!isValidMobile(mobile))
     return { ok: false, code: 'invalid', error: 'Please enter a valid 10-digit mobile number.' };
-  if (!EXAMS.includes(exam))
+  if (!EXAMS.includes(exam) && !LEGACY_EXAMS.includes(exam))
     return {
       ok: false,
       code: 'invalid',
@@ -692,6 +696,7 @@ async function handle(p) {
       name: admin.name,
       email: admin.email,
       expires_in: TOKEN_TTL_MS / 1000,
+      backend: BACKEND_VERSION,
     };
   }
 
@@ -868,7 +873,13 @@ const server = createServer(async (req, res) => {
     res.writeHead(204, corsHeaders(origin));
     return res.end();
   }
-  if (req.method === 'GET') return json(res, 200, { ok: true, service: 'ccs-dev-backend' }, origin);
+  if (req.method === 'GET')
+    return json(
+      res,
+      200,
+      { ok: true, service: 'ccs-dev-backend', backend: BACKEND_VERSION },
+      origin,
+    );
   if (req.method !== 'POST')
     return json(res, 405, { ok: false, error: 'Method not allowed.' }, origin);
 

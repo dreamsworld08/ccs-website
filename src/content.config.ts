@@ -9,8 +9,6 @@ import { z } from 'astro/zod';
 const json = (base: string) => glob({ pattern: '*.json', base: `./src/content/${base}` });
 const flag = z.boolean().default(true);
 
-export const EXAMS = ['UPSC CSE', 'Punjab PSC (PCS)', 'Punjab One Day Exams', 'Other'] as const;
-
 const settings = defineCollection({
   loader: json('settings'),
   schema: z.object({
@@ -72,9 +70,8 @@ const courses = defineCollection({
     thumbnail: z.string().default(''),
     name: z.string(),
     price: z.string().default(''),
-    category: z
-      .enum(['UPSC CSE', 'Punjab PSC', 'Punjab One Day', 'Optional', 'Test series'])
-      .default('UPSC CSE'),
+    // The exam this course is for (IAS, PCS, HPAS or HCS, see src/lib/exams.ts). A plain string: an older value must never break the build.
+    category: z.string().default('IAS'),
     order: z.number().default(100),
     published: flag,
     dummy: z.boolean().optional(),
@@ -134,7 +131,8 @@ const examUpdates = defineCollection({
   loader: json('exam-updates'),
   schema: z.object({
     date: z.string(),
-    exam_body: z.enum(['UPSC', 'PPSC', 'PSSSB', 'Punjab Police', 'Other']).default('Other'),
+    // The exam this update is about (IAS, PCS, HPAS, HCS or Other, see src/lib/exams.ts). A plain string, like the course category.
+    exam_body: z.string().default('Other'),
     category: z
       .enum(['Notification', 'Exam date', 'Admit card', 'Answer key', 'Result', 'Syllabus'])
       .default('Notification'),
@@ -172,7 +170,7 @@ const landingPages = defineCollection({
     hero_subtext: z.string().default(''),
     hero_bullets: z.array(z.string()).default([]),
     countdown_date: z.string().default(''),
-    default_exam: z.string().default('UPSC CSE'),
+    default_exam: z.string().default('IAS'),
     benefits: z.array(z.object({ title: z.string(), text: z.string() })).default([]),
     show_toppers: z.boolean().default(false),
     faqs: z.array(z.object({ q: z.string(), a: z.string() })).default([]),

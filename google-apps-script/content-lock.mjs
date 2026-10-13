@@ -146,6 +146,10 @@ export function cleanContent(rules, path, data, current) {
   for (var n = 0; n < names.length; n++) {
     var key = names[n];
     var field = rule.fields[key];
+    // A choice that can only be made when an item is created (such as a course's exam) keeps the stored value, whatever
+    // the request says (see the end of this function), so the request's value is not checked: an item saved before the
+    // list of choices changed must stay editable.
+    if (field.addOnly && current && Object.prototype.hasOwnProperty.call(current, key)) continue;
     var has =
       Object.prototype.hasOwnProperty.call(data, key) &&
       data[key] !== undefined &&

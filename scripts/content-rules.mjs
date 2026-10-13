@@ -18,13 +18,27 @@ const BEGIN =
   '/* ===== BEGIN GENERATED: content lock (npm run rules). Do not edit by hand. ===== */';
 const END = '/* ===== END GENERATED ===== */';
 
-/** schemas.ts is plain TypeScript with no imports: transpile it in memory and load it. */
-async function loadSchemas() {
-  const source = await readFile(SCHEMAS, 'utf8');
+const EXAMS_TS = root('src/lib/exams.ts');
+
+/** A TypeScript file as an in-memory module (a data: URL), so it can be imported without a build. */
+async function inMemoryModule(source) {
   const { outputText } = ts.transpileModule(source, {
     compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
   });
-  return import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
+  return `data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`;
+}
+
+/**
+ * schemas.ts is plain TypeScript whose only import is the shared exam list (src/lib/exams.ts): load that first and point
+ * the import at it, then transpile schemas.ts in memory and load it.
+ */
+async function loadSchemas() {
+  const exams = await inMemoryModule(await readFile(EXAMS_TS, 'utf8'));
+  const source = (await readFile(SCHEMAS, 'utf8')).replace(
+    "from '../lib/exams'",
+    `from '${exams}'`,
+  );
+  return import(await inMemoryModule(source));
 }
 
 /** One admin field -> one backend rule (only what the validator needs). */

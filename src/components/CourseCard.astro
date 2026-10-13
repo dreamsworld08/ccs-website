@@ -1,6 +1,7 @@
 ---
 import Img from './Img.astro';
 import { examForCategory } from '../lib/site';
+import { examName } from '../lib/exams';
 interface Props {
   course: {
     id: string;
@@ -11,7 +12,9 @@ interface Props {
 }
 const { course, level = 3 } = Astro.props;
 const Heading = `h${level}` as 'h2' | 'h3';
-const { name, price, thumbnail, category } = course.data;
+const { name, price, thumbnail } = course.data;
+// A course saved before the four exams (UPSC CSE, Punjab PSC, Optional, Test series...) is shown as the exam it belongs to.
+const category = examName(course.data.category) || course.data.category;
 ---
 
 <!-- Phones: a compact horizontal card (thumbnail left, details right). From 768px: the large vertical card. -->

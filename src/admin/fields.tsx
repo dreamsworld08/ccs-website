@@ -122,7 +122,11 @@ export function FieldInput({
             disabled={readOnly}
             onChange={(e) => set(field.key, (e.target as HTMLSelectElement).value)}
           >
-            {field.options!.map((o) => (
+            {/* A stored value that is no longer one of the choices is still shown as it is, never swapped for the first choice. */}
+            {(value && !field.options!.includes(value)
+              ? [value, ...field.options!]
+              : field.options!
+            ).map((o) => (
               <option value={o}>{o}</option>
             ))}
           </select>

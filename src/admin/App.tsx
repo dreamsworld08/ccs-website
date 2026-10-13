@@ -9,14 +9,14 @@ import {
   type Session,
 } from './api';
 import { COURSES, EXAM_UPDATES, REELS, RESOURCES, RESULTS, TEACHERS, TESTS } from './schemas';
-import { Toasts } from './ui';
+import { Banner, Toasts } from './ui';
 import EnquiriesTab from './tabs/EnquiriesTab';
 import ContentTab from './tabs/ContentTab';
 import HomeTab from './tabs/HomeTab';
 import InstagramTab from './tabs/InstagramTab';
 import LandingPagesTab from './tabs/LandingPagesTab';
 import SettingsTab from './tabs/SettingsTab';
-import { IS_LOCAL_BACKEND } from '../config/backend';
+import { IS_LOCAL_BACKEND, REQUIRED_BACKEND_VERSION } from '../config/backend';
 
 const TABS = [
   ['enquiries', 'Enquiries'],
@@ -128,6 +128,13 @@ export default function App() {
         </div>
       )}
       <main class="content">
+        {session.backend !== undefined && session.backend < REQUIRED_BACKEND_VERSION && (
+          <Banner kind="warn">
+            The website's backend (the Google Apps Script) is older than the website. Some changes
+            you save here may be refused, or may not show on the site. Ask your developer to paste
+            the latest Code.gs into Apps Script and publish a new version, then sign in again.
+          </Banner>
+        )}
         {active === 'enquiries' && (
           <EnquiriesTab attemptYears={settings?.attempt_years ?? ['2027', '2028', '2029']} />
         )}
@@ -167,6 +174,7 @@ function Login({ onLogin }: { onLogin: (s: Session) => void }) {
       name: string;
       email: string;
       expires_in: number;
+      backend?: number;
     }>('login', { email, password });
     window.clearTimeout(waiting);
     setBusy(false);
@@ -184,6 +192,7 @@ function Login({ onLogin }: { onLogin: (s: Session) => void }) {
       name: res.name,
       email: res.email,
       expiresAt: Date.now() + res.expires_in * 1000,
+      backend: Number(res.backend) || 0,
     };
     saveSession(s);
     onLogin(s);

@@ -18,11 +18,11 @@ const ALIASES: Record<string, string> = {
   'Current Affairs': 'current affairs ca news monthly weekly',
   Videos: 'video watch youtube lecture',
   'Punjab GK': 'punjab gk general knowledge',
-  // exam bodies
-  UPSC: 'upsc union public service commission civil services cse ias',
-  PPSC: 'ppsc punjab public service commission pcs',
-  PSSSB: 'psssb subordinate services selection board punjab',
-  'Punjab Police': 'punjab police constable si',
+  // exams
+  IAS: 'ias upsc union public service commission civil services cse',
+  PCS: 'pcs ppsc punjab public service commission civil services',
+  HPAS: 'hpas hppsc himachal pradesh public service commission administrative services',
+  HCS: 'hcs hpsc haryana public service commission civil services',
   // update categories
   Notification: 'notification notice advertisement vacancy',
   'Exam date': 'exam date schedule calendar',

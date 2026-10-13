@@ -6,9 +6,14 @@ import FilterChips from '../components/FilterChips.astro';
 import CtaPanel from '../components/CtaPanel.astro';
 import Icon from '../components/Icon.astro';
 import { getCourses, getSettings } from '../lib/site';
+import { OFFERED_EXAMS, examName } from '../lib/exams';
 
 const [courses, settings] = await Promise.all([getCourses(), getSettings()]);
-const categories = [...new Set(courses.map((c) => c.data.category))];
+const present = new Set(courses.map((c) => examName(c.data.category) || c.data.category));
+const categories = [
+  ...OFFERED_EXAMS.filter((e) => present.has(e)),
+  ...[...present].filter((c) => !(OFFERED_EXAMS as readonly string[]).includes(c)),
+];
 const included = [
   { icon: 'notebook-pen', text: 'Printed + digital notes' },
   { icon: 'clipboard-check', text: 'Weekly tests with review' },
@@ -21,23 +26,19 @@ const included = [
 
 <Base
   title="Courses"
-  description="UPSC CSE, Punjab PCS and Punjab one-day exam courses at Chandigarh Civil Services. See courses and enquire for free counselling."
+  description="IAS, PCS, HPAS and HCS courses at Chandigarh Civil Services. See courses and enquire for free counselling."
 >
   <PageHeader
     kicker="Courses"
     title="Pick your course"
-    text="Structured programmes for UPSC CSE, Punjab PCS and every major Punjab one-day exam. Tap Enquire and we will call you."
+    text="Structured programmes for IAS, PCS, HPAS and HCS. Tap Enquire and we will call you."
   />
 
   <section class="panel bg-white border border-line" data-list-filter>
     <div class="container-x section-pad">
       {categories.length > 1 && (
         <div class="mb-8">
-          <FilterChips
-            field="category"
-            options={categories}
-            label="Filter courses by exam category"
-          />
+          <FilterChips field="category" options={categories} label="Filter courses by exam" />
         </div>
       )}
       <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
