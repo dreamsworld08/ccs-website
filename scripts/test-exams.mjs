@@ -78,6 +78,13 @@ check(
   'the older course categories "Optional" and "Test series" belong to IAS',
 );
 check(
+  examName('UPSC') === 'IAS' &&
+    examName('PPSC') === 'PCS' &&
+    examName('PSSSB') === 'Other' &&
+    examName('Punjab Police') === 'Other',
+  'an exam update filed under its older issuing body (UPSC, PPSC...) reads as the exam it belongs to',
+);
+check(
   examName('Punjab One Day Exams') === 'Other' && examName('Punjab One Day') === 'Other',
   'one-day exams are no longer offered: they become "Other"',
 );

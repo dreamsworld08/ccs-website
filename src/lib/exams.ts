@@ -30,6 +30,11 @@ export const LEGACY_EXAMS: Record<string, string> = {
   'Punjab One Day': 'Other',
   Optional: 'IAS',
   'Test series': 'IAS',
+  // the issuing bodies an exam update used to be filed under
+  UPSC: 'IAS',
+  PPSC: 'PCS',
+  PSSSB: 'Other',
+  'Punjab Police': 'Other',
 };
 
 /** Today's name for an exam, whichever generation of the name it is written in ('' when it is not one of ours). */

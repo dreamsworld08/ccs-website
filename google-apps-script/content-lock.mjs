@@ -158,6 +158,17 @@ export function cleanContent(rules, path, data, current) {
       if (field.required) return { ok: false, error: field.label + ' is required.' };
       continue;
     }
+    // A choice that is exactly what is already stored is accepted as it is, even if the list of choices has changed since:
+    // an item saved earlier must stay editable (nothing new gets in, the request only repeats the stored value).
+    if (
+      field.type === 'select' &&
+      current &&
+      Object.prototype.hasOwnProperty.call(current, key) &&
+      current[key] === data[key]
+    ) {
+      out[key] = data[key];
+      continue;
+    }
     var cleaned = cleanValue(field, data[key]);
     if (cleaned.error) return { ok: false, error: cleaned.error };
     out[key] = cleaned.value;

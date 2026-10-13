@@ -589,6 +589,17 @@ function cleanContent_(rules, path, data, current) {
       if (field.required) return { ok: false, error: field.label + ' is required.' };
       continue;
     }
+    // A choice that is exactly what is already stored is accepted as it is, even if the list of choices has changed since:
+    // an item saved earlier must stay editable (nothing new gets in, the request only repeats the stored value).
+    if (
+      field.type === 'select' &&
+      current &&
+      Object.prototype.hasOwnProperty.call(current, key) &&
+      current[key] === data[key]
+    ) {
+      out[key] = data[key];
+      continue;
+    }
     var cleaned = cleanValue(field, data[key]);
     if (cleaned.error) return { ok: false, error: cleaned.error };
     out[key] = cleaned.value;
@@ -647,10 +658,18 @@ function validateContent_(path, data) {
   return '';
 }
 
-/** True when the rule has developer-only switches or set-once fields, so the stored copy must be read first. */
-function needsStoredCopy_(rule) {
+/**
+ * True when the stored copy must be read first: the rule has developer-only switches or set-once fields, or a dropdown value
+ * in the request is not one of today's choices (it may be the value the item already holds, saved before the list changed,
+ * which the lock then accepts unchanged). Ordinary saves skip the extra read.
+ */
+function needsStoredCopy_(rule, data) {
   if (rule.developerOnly && Object.keys(rule.developerOnly).length) return true;
-  return Object.keys(rule.fields).some(function (k) { return rule.fields[k].addOnly; });
+  return Object.keys(rule.fields).some(function (k) {
+    var f = rule.fields[k];
+    if (f.addOnly) return true;
+    return f.type === 'select' && typeof data[k] === 'string' && data[k] !== '' && f.options.indexOf(data[k]) < 0;
+  });
 }
 
 /** Saves, deletes and uploads are queued one at a time: two commits reaching GitHub together are refused with a conflict. */
@@ -671,7 +690,7 @@ function saveContentLocked_(p, me) {
   // switches and "set once" fields from the stored copy, never from the request.
   var rule = CONTENT_RULES[path.split('/')[0]];
   var current = null;
-  if (p.sha && needsStoredCopy_(rule)) {
+  if (p.sha && needsStoredCopy_(rule, data)) {
     var read = UrlFetchApp.fetch(ghUrl_('src/content/' + path, true), ghFetchParams_('get'));
     if (read.getResponseCode() === 200) current = parseItem_(path, read).data;
     else if (read.getResponseCode() !== 404) return { ok: false, error: 'Could not read the current version from GitHub (error ' + read.getResponseCode() + '). Please try again.' };

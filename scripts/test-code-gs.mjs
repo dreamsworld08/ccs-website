@@ -949,6 +949,38 @@ check(
     stored('courses/legacy-cat.json').category === 'UPSC CSE',
   'a course saved before the four exams (category "UPSC CSE") can still be edited, and keeps that category',
 );
+// an exam update filed under an older exam body (saved before the four exams) can still be edited
+const updateOf = (o = {}) => ({
+  date: '2026-09-28',
+  exam_body: 'PPSC',
+  category: 'Notification',
+  title: 'T',
+  link: '',
+  published: true,
+  ...o,
+});
+putRepoFile('exam-updates/legacy-body.json', updateOf());
+const legacyUpdate = call({
+  action: 'getContent',
+  token: T,
+  path: 'exam-updates/legacy-body.json',
+});
+check(
+  saveAs('exam-updates/legacy-body.json', updateOf({ title: 'Edited' }), legacyUpdate.sha).ok &&
+    stored('exam-updates/legacy-body.json').exam_body === 'PPSC' &&
+    stored('exam-updates/legacy-body.json').title === 'Edited',
+  'an exam update filed under an older exam body ("PPSC") can still be edited and keeps it',
+);
+check(
+  !saveAs(
+    'exam-updates/legacy-body.json',
+    updateOf({ exam_body: 'PSSSB' }),
+    call({ action: 'getContent', token: T, path: 'exam-updates/legacy-body.json' }).sha,
+  ).ok &&
+    !saveAs('exam-updates/new-legacy-body.json', updateOf()).ok &&
+    saveAs('exam-updates/new-ok-body.json', updateOf({ exam_body: 'HCS' })).ok,
+  'it cannot be changed to another older value, and a NEW update must use IAS, PCS, HPAS, HCS or Other',
+);
 check(
   !saveAs('courses/new-legacy.json', course({ category: 'UPSC CSE' })).ok &&
     !saveAs('courses/new-legacy2.json', course({ category: 'Test series' })).ok,
