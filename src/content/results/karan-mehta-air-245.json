@@ -1,12 +1,11 @@
 {
-  "student_name": "Karan Mehta",
+  "photo": "/uploads/results/whatsapp-image-2026-10-13-at-1-57-50-pm-1791880137322.webp",
+  "student_name": "NAMNEET SINGH IAS ",
   "exam": "UPSC CSE",
   "exam_year": "2025",
-  "rank_label": "AIR 245",
-  "photo": "/uploads/placeholders/person-3.svg",
+  "rank_label": "AIR 191",
   "quote": "Clear strategy, honest feedback, zero noise.",
   "show_on_home": true,
   "order": 3,
-  "published": true,
-  "dummy": true
+  "published": true
 }
