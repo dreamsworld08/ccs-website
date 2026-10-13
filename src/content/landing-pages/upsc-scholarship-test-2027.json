@@ -13,7 +13,7 @@
     "Detailed performance report with mentor call",
     "Scholarship from 25% up to 100%"
   ],
-  "countdown_date": "2026-12-15T10:00",
+  "countdown_date": "2026-11-14T10:00",
   "default_exam": "UPSC CSE",
   "benefits": [
     {
@@ -49,6 +49,5 @@
     }
   ],
   "cta_headline": "Reserve your seat for the scholarship test",
-  "cta_button_label": "Book free counselling",
-  "dummy": true
+  "cta_button_label": "Book free counselling"
 }
