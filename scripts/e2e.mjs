@@ -56,7 +56,10 @@ const browser = await puppeteer.launch({
   args: ['--no-sandbox'],
   dumpio: Boolean(process.env.E2E_DUMPIO), // E2E_DUMPIO=1 prints Chrome's own messages (to see why it died)
 });
-browser.on('disconnected', () => console.log('  !! the test browser closed unexpectedly'));
+let finished = false; // set just before the browser is closed on purpose at the end of the run
+browser.on('disconnected', () => {
+  if (!finished) console.log('  !! the test browser closed unexpectedly');
+});
 const login = await api('login', { email: LOGIN, password: PASSWORD });
 check(login.ok, 'API login with the hardcoded admin');
 let token = login.token; // refreshed after the password-change test, which ends older sessions
@@ -3284,6 +3287,7 @@ console.log('\nSecurity edge cases (API)');
   );
 }
 
+finished = true;
 await browser.close();
 close();
 console.log(`\n${fail ? 'FAILED' : 'PASSED'}: ${pass} passed, ${fail} failed`);
