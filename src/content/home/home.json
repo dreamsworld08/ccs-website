@@ -1,5 +1,5 @@
 {
-  "hero_video_url": "https://www.youtube.com/watch?v=pr2JbxsBlnk&t=21s",
+  "hero_video_url": "https://www.youtube.com/watch?v=DLnCVcdY-AM",
   "hero_poster": "/uploads/home/pr2jbxsblnk-hd-1791270465484.webp",
   "hero_text": "Automatic",
   "hero_kicker": "Welcome to Chandigarh Civil Services,",
@@ -41,12 +41,12 @@
   "founder_kicker": "ACADMEIC ENV IS COGENIAL FOR ASPIRANTS",
   "founder_headline": "TRANSFORMING DREAMS INTO REALITY",
   "founder_message": "Chandigarh Civil Services was established in December 2020 with the intent to be a true counselor and logistics provider for youngsters aspiring a dream in Indian Civil Services and Provincial Civil Services Exams. It has a set plan to work on basics and to make students self-reliant and intrepid enough to hold challenges by horns. From the foundation programme to answer writing, a time-bound programme and result-oriented strategy have been visualised. Enrolled students will see a difference in approach in containing content and a change in their perception to deal with in academics.",
-  "featured_course_ids": [
-    "ias",
-    "pcs",
-    "hpas",
-    "hcs"
-  ],
+  "featured_course_ids": [],
+  "yt_show": true,
+  "yt_heading": "Latest from our YouTube channel",
+  "yt_subtext": "New lectures and current-affairs updates from our channel. Tap a card to watch.",
+  "yt_count": "8",
+  "yt_shorts": false,
   "cta_headline": "Start your preparation the right way",
   "cta_subtext": "Share your details and our counsellor will call you within 24 hours.",
   "cta_points": [
