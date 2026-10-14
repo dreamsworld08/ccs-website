@@ -54,7 +54,9 @@ const browser = await puppeteer.launch({
   executablePath: CHROME,
   headless: 'new',
   args: ['--no-sandbox'],
+  dumpio: Boolean(process.env.E2E_DUMPIO), // E2E_DUMPIO=1 prints Chrome's own messages (to see why it died)
 });
+browser.on('disconnected', () => console.log('  !! the test browser closed unexpectedly'));
 const login = await api('login', { email: LOGIN, password: PASSWORD });
 check(login.ok, 'API login with the hardcoded admin');
 let token = login.token; // refreshed after the password-change test, which ends older sessions
@@ -69,6 +71,8 @@ async function newPage(width = 390, mobileEmu = true) {
   const page = await browser.newPage();
   await page.setViewport({ width, height: 844, isMobile: mobileEmu, hasTouch: mobileEmu });
   page.errors = [];
+  // A renderer that dies (out of memory, for example) shows up later as "detached Frame": say so where it happens.
+  page.on('error', (e) => console.log(`  !! the page crashed: ${e.message}`));
   // Each page starts without the 60-second re-submit cooldown (it is tested explicitly below).
   await page.evaluateOnNewDocument(() => {
     try {
@@ -403,16 +407,17 @@ console.log('\nThe four exams: Home courses, Courses page, exam updates and the 
     els.map((e) => e.dataset.chip),
   );
   check(
-    chips.join('|') === '|IAS|PCS|HPAS|HCS',
-    'the Courses page filters by the four exams, in that order',
+    chips.slice(0, 5).join('|') === '|IAS|PCS|HPAS|HCS' &&
+      chips.slice(5).every((c) => c === 'Other'),
+    'the Courses page filters by the four exams, in that order (any other course goes under "Other")',
     chips.join('|'),
   );
   const titles = await page.$$eval('article[data-category] h2', (els) =>
     els.map((e) => e.textContent.trim()),
   );
   check(
-    titles.length >= 5 && !titles.some((t) => /patwari|clerk|naib tehsildar/i.test(t)),
-    'the Patwari & Clerk and Naib Tehsildar courses are gone',
+    titles.length >= 5 && !titles.some((t) => /naib tehsildar/i.test(t)),
+    'the Naib Tehsildar course is gone',
     titles.join(' | '),
   );
   await page.click('[data-chip-group="category"] [data-chip="HCS"]');
@@ -758,6 +763,57 @@ console.log('\nSite search (nav dropdown + /search/ page)');
   }
   check(page.errors.length === 0, 'no console errors during search', page.errors.join(' | '));
   await page.close();
+
+  // the burger button must open a menu you can SEE and use (it once opened a menu 0px tall: invisible, so it looked dead)
+  for (const w of [320, 390, 768]) {
+    const m = await newPage(w);
+    await m.evaluateOnNewDocument(() => sessionStorage.setItem('ccs_popup_shown', '1'));
+    await open(m, '/');
+    const menu = () =>
+      m.evaluate(() => {
+        const d = document.getElementById('nav-drawer');
+        const r = d.getBoundingClientRect();
+        const links = [...d.querySelectorAll('nav > a')].map((a) => {
+          const q = a.getBoundingClientRect();
+          const hit = document.elementFromPoint(
+            q.x + q.width / 2,
+            q.y + Math.min(q.height / 2, 20),
+          );
+          return q.height > 20 && q.top < innerHeight && a.contains(hit);
+        });
+        const t = document.getElementById('nav-toggle').getBoundingClientRect();
+        const onTop = document.elementFromPoint(t.x + t.width / 2, t.y + t.height / 2);
+        return {
+          open: !d.hidden,
+          height: Math.round(r.height),
+          reachesBottom: Math.round(r.bottom) === innerHeight,
+          links,
+          closeOnTop: !!onTop?.closest('#nav-toggle'),
+          locked: document.body.style.overflow === 'hidden',
+        };
+      });
+    await m.tap('#nav-toggle');
+    await sleep(300);
+    const o = await menu();
+    check(
+      o.open && o.height > 300 && o.reachesBottom && o.links.length >= 6 && o.links.every(Boolean),
+      `the burger opens a visible, full-height menu with every link tappable @${w}px`,
+      JSON.stringify(o),
+    );
+    check(
+      o.closeOnTop && o.locked,
+      `the close button stays on top and the page behind is locked @${w}px`,
+    );
+    await m.tap('#nav-toggle');
+    await sleep(200);
+    check(!(await menu()).open, `the close button closes the menu @${w}px`);
+    await m.tap('#nav-toggle');
+    await sleep(200);
+    await m.keyboard.press('Escape');
+    await sleep(200);
+    check(!(await menu()).open, `Escape closes the menu @${w}px`);
+    await m.close();
+  }
 
   // below 360px the header icon is hidden; the mobile menu has a plain search form instead
   const small = await newPage(320);

@@ -93,55 +93,61 @@ const isActive = (href: string) =>
       </button>
     </div>
   </div>
-
-  <div
-    id="nav-drawer"
-    class="lg:hidden fixed inset-x-0 top-[68px] bottom-0 z-40 bg-white overflow-y-auto"
-    hidden
-  >
-    <nav class="container-x py-6 grid gap-1" aria-label="Mobile">
-      <form role="search" action={withBase('/search/')} method="get" class="relative mb-3">
-        <label class="sr-only-x" for="drawer-search">
-          Search free resources, exam updates and results
-        </label>
-        <span class="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted">
-          <Icon name="search" size={20} />
-        </span>
-        <input
-          id="drawer-search"
-          name="q"
-          type="search"
-          class="input !rounded-full !pl-12"
-          placeholder="Search resources, updates, results"
-          autocomplete="off"
-          enterkeyhint="search"
-          maxlength="80"
-        />
-      </form>
-      {links.map((l) => (
-        <a
-          href={withBase(l.href)}
-          class:list={[
-            'font-heading font-bold uppercase text-[34px] leading-[1.05] py-3 border-b border-line',
-            isActive(l.href) ? 'text-primary' : 'text-ink',
-          ]}
-          aria-current={isActive(l.href) ? 'page' : undefined}
-        >
-          {l.label}
-        </a>
-      ))}
-      <div class="mt-6 grid gap-3">
-        <a href={telLink(settings.phone)} class="btn btn-secondary">
-          <Icon name="phone" size={18} />
-          {settings.phone}
-        </a>
-        <button type="button" class="btn btn-primary" data-open-enquiry data-exam="">
-          Enquire now
-        </button>
-      </div>
-    </nav>
-  </div>
 </header>
+
+{/*
+  The mobile menu is deliberately NOT inside the header. The header is frosted glass (backdrop-blur), and a blurred element
+  becomes the reference frame for fixed-position children: inside it, "stretch to the bottom of the screen" meant "to the bottom
+  of the 68px header", so the opened menu was 0px tall and the burger button looked dead. z-45: above the WhatsApp button
+  (z-40), below the header (z-50) so the close button stays visible.
+*/}
+<div
+  id="nav-drawer"
+  class="lg:hidden fixed inset-x-0 top-[68px] bottom-0 z-[45] bg-white overflow-y-auto"
+  hidden
+>
+  <nav class="container-x py-6 grid gap-1" aria-label="Mobile">
+    <form role="search" action={withBase('/search/')} method="get" class="relative mb-3">
+      <label class="sr-only-x" for="drawer-search">
+        Search free resources, exam updates and results
+      </label>
+      <span class="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted">
+        <Icon name="search" size={20} />
+      </span>
+      <input
+        id="drawer-search"
+        name="q"
+        type="search"
+        class="input !rounded-full !pl-12"
+        placeholder="Search resources, updates, results"
+        autocomplete="off"
+        enterkeyhint="search"
+        maxlength="80"
+      />
+    </form>
+    {links.map((l) => (
+      <a
+        href={withBase(l.href)}
+        class:list={[
+          'font-heading font-bold uppercase text-[34px] leading-[1.05] py-3 border-b border-line',
+          isActive(l.href) ? 'text-primary' : 'text-ink',
+        ]}
+        aria-current={isActive(l.href) ? 'page' : undefined}
+      >
+        {l.label}
+      </a>
+    ))}
+    <div class="mt-6 grid gap-3">
+      <a href={telLink(settings.phone)} class="btn btn-secondary">
+        <Icon name="phone" size={18} />
+        {settings.phone}
+      </a>
+      <button type="button" class="btn btn-primary" data-open-enquiry data-exam="">
+        Enquire now
+      </button>
+    </div>
+  </nav>
+</div>
 
 <script>
   const toggle = document.getElementById('nav-toggle');
