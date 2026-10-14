@@ -22,7 +22,7 @@ export const BACKEND_URL: string =
  * saves may be refused. Raise this together with BACKEND_VERSION in Code.gs and dev-server/server.mjs
  * (`npm run test:gs` checks they agree).
  */
-export const REQUIRED_BACKEND_VERSION = 2;
+export const REQUIRED_BACKEND_VERSION = 3;
 
 export const BACKEND_CONFIGURED = !BACKEND_URL.startsWith('PASTE_');
 export const IS_LOCAL_BACKEND = BACKEND_URL.startsWith('http://localhost');

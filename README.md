@@ -130,8 +130,9 @@ at `/search/?q=...`.
 ## The four exams (IAS, PCS, HPAS, HCS)
 
 The institute prepares students for four exams, and **one list** (`src/lib/exams.ts`) drives everything that names an exam:
-the Home page's featured courses (four cards), the course category (a course's exam), the exam-update exam and its filter on
-`/exam-updates/`, the enquiry forms (the exam dropdown, plus **Other**), landing pages and free tests. A course card's
+the course category (a course's exam), the exam-update exam and its filter on
+`/exam-updates/`, the enquiry forms (the exam dropdown, plus **Other**), landing pages, free tests and the footer links
+(`EXAM_SHORT`, one line each). A course card's
 **Enquire** button opens the form with that card's exam selected.
 
 - **Old names stay valid.** The sheet holds enquiries saved as `UPSC CSE`, `Punjab PSC (PCS)` and `Punjab One Day Exams`, and an

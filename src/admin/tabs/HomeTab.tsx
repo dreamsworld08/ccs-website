@@ -18,8 +18,17 @@ export default function HomeTab() {
     setError('');
     const [res, list] = await Promise.all([getItem(PATH), listItems('courses')]);
     if (!res.ok) return void setError(res.error || 'Could not load the Home page content.');
+    const loaded = (res as unknown as Item).data;
+    // A course that was deleted since it was chosen would only be a dead entry in the list: leave it out of the form
+    // (it is dropped from the file the next time the page is saved).
+    const existing = new Set(
+      (list ?? []).map((i) => i.path.replace(/^courses\//, '').replace(/\.json$/, '')),
+    );
+    const featured = Array.isArray(loaded.featured_course_ids)
+      ? loaded.featured_course_ids.filter((id: string) => list === null || existing.has(id))
+      : loaded.featured_course_ids;
     setItem(res as unknown as Item);
-    setData({ ...HOME_DEFAULTS, ...(res as unknown as Item).data });
+    setData({ ...HOME_DEFAULTS, ...loaded, featured_course_ids: featured });
     setDirty(false);
     setCourses(
       (list ?? []).map((i) => ({

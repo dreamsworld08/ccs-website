@@ -361,14 +361,27 @@ console.log('\nThe four exams: Home courses, Courses page, exam updates and the 
       picture: !!a.querySelector('img'),
     }));
   });
+  // whatever the admin chose under Home Page > courses (read from the content the site was built from)
+  const featuredIds = JSON.parse(
+    await readFile(join(ROOT, 'src/content/home/home.json'), 'utf8'),
+  ).featured_course_ids;
   check(
-    home.map((c) => c.cat).join() === 'IAS,PCS,HPAS,HCS',
-    'Home features the four exams as its courses, in order',
-    JSON.stringify(home),
+    featuredIds.length > 4 && home.length === featuredIds.length,
+    `Home shows every course that was chosen (${featuredIds.length}): there is no limit of four`,
+    `${home.length} cards for ${featuredIds.length} chosen`,
   );
   check(
-    home.every((c) => c.exam === c.cat && c.picture && c.name.startsWith(c.cat)),
-    'each card has a picture, names its exam, and opens the enquiry form with that exam selected',
+    home
+      .slice(0, 4)
+      .map((c) => c.cat)
+      .join() === 'IAS,PCS,HPAS,HCS',
+    'the chosen courses appear in the order they were chosen (the four exams first)',
+    JSON.stringify(home.map((c) => c.cat)),
+  );
+  check(
+    home.every((c) => c.picture && c.exam === (c.cat === 'Other' ? '' : c.cat)) &&
+      home.slice(0, 4).every((c) => c.name.startsWith(c.cat)),
+    'each card has a picture and opens the enquiry form with its own exam selected',
     JSON.stringify(home),
   );
   for (const exam of ['IAS', 'PCS', 'HPAS', 'HCS']) {
@@ -3080,6 +3093,79 @@ console.log(
     }
     await rm(probe);
   }
+}
+
+/* ============================================================ admin: Home page courses picker */
+console.log('\nAdmin: choosing the courses shown on the Home page (any number, any order)');
+{
+  const page = await newPage(1280, false);
+  await open(page, '/admin/');
+  await page.type('form.login input[type=text]', LOGIN);
+  await page.type('form.login input[type=password]', PASSWORD);
+  await page.click('form.login button[type=submit]');
+  await page.waitForSelector('.topbar');
+  await page.goto(`${SITE}/admin/#home`);
+  await page.waitForSelector('select[aria-label="Course 1 on the Home page"]', { timeout: 20000 });
+  const rows = () =>
+    page.$$eval('select[aria-label$="on the Home page"]', (els) => els.map((e) => e.value));
+  const addOptions = () =>
+    page
+      .$$eval('select[aria-label="Add a course to the Home page"] option', (os) =>
+        os.map((o) => o.value).filter(Boolean),
+      )
+      .catch(() => []);
+  const before = await rows();
+  const offered = await addOptions();
+  check(
+    before.length > 4 && offered.length > 0,
+    'the picker lists the chosen courses and offers the others to add',
+    JSON.stringify({ before, offered }),
+  );
+  const unsaved = () =>
+    page.evaluate(() =>
+      /Unsaved changes/.test(document.querySelector('.sticky-save')?.textContent ?? ''),
+    );
+  check(!(await unsaved()), 'nothing is marked as changed yet');
+  await page.select('select[aria-label="Add a course to the Home page"]', offered[0]);
+  await sleep(200);
+  const added = await rows();
+  check(
+    added.length === before.length + 1 && added.at(-1) === offered[0] && (await unsaved()),
+    'adding a course puts it at the end, and marks the page as changed',
+    JSON.stringify(added),
+  );
+  await page.click(`button[aria-label="Move course ${added.length} up"]`);
+  await sleep(200);
+  const moved = await rows();
+  check(
+    moved.at(-2) === offered[0] && moved.at(-1) === added.at(-2),
+    'a course can be moved up',
+    JSON.stringify(moved),
+  );
+  await page.click('button[aria-label="Remove course 1"]');
+  await sleep(200);
+  const removed = await rows();
+  check(
+    removed.length === moved.length - 1 && removed[0] === moved[1],
+    'a course can be removed',
+    JSON.stringify(removed),
+  );
+  // keep adding until nothing is left to add: the list can hold every course
+  for (let i = 0; i < 40 && (await addOptions()).length; i++) {
+    await page.select(
+      'select[aria-label="Add a course to the Home page"]',
+      (await addOptions())[0],
+    );
+    await sleep(120);
+  }
+  const everything = await rows();
+  check(
+    new Set(everything).size === everything.length &&
+      !(await page.$('select[aria-label="Add a course to the Home page"]')),
+    'every course can be added (once each), and the "add" box goes away when none is left',
+    everything.join(),
+  );
+  await page.close();
 }
 
 /* ============================================================ security edge cases */

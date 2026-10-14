@@ -51,7 +51,7 @@ const PATH_RE = new RegExp(`^(${CONTENT_FOLDERS.join('|')})/[a-z0-9][a-z0-9_-]{0
 const EXAMS = ['IAS', 'PCS', 'HPAS', 'HCS', 'Other'];
 const LEGACY_EXAMS = ['UPSC CSE', 'Punjab PSC (PCS)', 'Punjab One Day Exams'];
 // Like BACKEND_VERSION in Code.gs: the admin panel warns when the backend reports less than it requires.
-const BACKEND_VERSION = 2;
+const BACKEND_VERSION = 3;
 const TOKEN_TTL_MS = 12 * 60 * 60 * 1000;
 const MAX_BODY = 9 * 1024 * 1024;
 const MAX_JSON_BYTES = 60 * 1024;

@@ -1040,19 +1040,26 @@ check(
   'leaving the setting out stores nothing (the site treats a missing value as Automatic)',
 );
 
-// the courses featured on the Home page: up to four (the four exams)
+// the courses featured on the Home page: any number up to 24, or none (then every course is shown)
+const ids = (n) => Array.from({ length: n }, (_, i) => `course-${i + 1}`);
 check(
   saveHome({ featured_course_ids: ['ias', 'pcs', 'hpas', 'hcs'] }).ok &&
     stored('home/home.json').featured_course_ids.join() === 'ias,pcs,hpas,hcs',
-  'four featured courses can be saved (IAS, PCS, HPAS, HCS)',
+  'the four exam courses can be featured',
 );
 check(
-  !saveHome({ featured_course_ids: ['ias', 'pcs', 'hpas', 'hcs', 'extra'] }).ok,
-  'but not five',
+  saveHome({ featured_course_ids: ids(5) }).ok && saveHome({ featured_course_ids: ids(24) }).ok,
+  'more than four can be featured, up to 24',
+);
+check(!saveHome({ featured_course_ids: ids(25) }).ok, 'but not an unlimited list (25 is refused)');
+check(
+  saveHome({ featured_course_ids: [] }).ok &&
+    stored('home/home.json').featured_course_ids.length === 0,
+  'an empty list is fine (every course is then shown)',
 );
 check(
   saveHome({ featured_course_ids: ['ias'] }).ok && !saveHome({ featured_course_ids: ['../x'] }).ok,
-  'fewer than four is fine, and a course id must be a plain id',
+  'a course id must be a plain id',
 );
 // the YouTube videos section on the Home page
 const yt = {

@@ -2,7 +2,7 @@
 import Icon from './Icon.astro';
 import { withBase, telLink, getCourses, getLandingPages, safeHref } from '../lib/site';
 import type { getSettings } from '../lib/site';
-import { EXAM_NAMES, OFFERED_EXAMS } from '../lib/exams';
+import { EXAM_SHORT, OFFERED_EXAMS } from '../lib/exams';
 
 interface Props {
   settings: Awaited<ReturnType<typeof getSettings>>;
@@ -34,7 +34,7 @@ const resources = [
   ...(settings.show_free_tests ? [{ href: '/free-tests', label: 'Free Tests' }] : []),
   { href: '/privacy-policy', label: 'Privacy Policy' },
 ];
-const exams = OFFERED_EXAMS.map((e) => ({ href: '/courses', label: EXAM_NAMES[e] }));
+const exams = OFFERED_EXAMS.map((e) => ({ href: '/courses', label: EXAM_SHORT[e] }));
 const programLinks = programs.length
   ? programs.map((p) => ({
       href: `/lp/${p.data.slug}`,

@@ -2,7 +2,14 @@
 // they carry a copy: this fails if any copy drifts, and checks the helper that reads old and new names.
 //   npm run test:exams
 import { readFileSync } from 'node:fs';
-import { EXAM_NAMES, EXAMS, LEGACY_EXAMS, OFFERED_EXAMS, examName } from '../src/lib/exams.ts';
+import {
+  EXAM_NAMES,
+  EXAM_SHORT,
+  EXAMS,
+  LEGACY_EXAMS,
+  OFFERED_EXAMS,
+  examName,
+} from '../src/lib/exams.ts';
 
 let pass = 0;
 let fail = 0;
@@ -27,6 +34,10 @@ check(
 check(
   OFFERED_EXAMS.every((e) => EXAM_NAMES[e]),
   'every exam has a full name',
+);
+check(
+  OFFERED_EXAMS.every((e) => EXAM_SHORT[e]?.startsWith(e) && EXAM_SHORT[e].length <= 16),
+  'every exam has a short label (for the footer) that starts with its code and fits on one line',
 );
 
 console.log('\nthe copies agree');

@@ -183,17 +183,23 @@ On phones the video is shown as the poster image with a Play button to save the 
 You can change a course's **thumbnail, name and price**, add a course, delete one, reorder, or untick **Published**
 to hide it. The **exam** (IAS, PCS, HPAS or HCS) is chosen when you add the course and cannot be changed afterwards: it
 is also the exam that is selected in the enquiry form when someone taps **Enquire** on that course.
-The Home page shows up to four courses (today the four exams: IAS, PCS, HPAS and HCS). To change them, use
-**Home Page > Featured courses**.
+
+### Which courses the Home page shows
+
+There is **no limit**: add as many courses as you like in the **Courses** tab. Under **Home Page > Courses shown on the Home
+page** you choose which of them appear on the Home page and in what order:
+
+- **+ Add a course...** adds one to the end of the list; **↑ ↓** change the order; **Remove** takes one off.
+- **Leave the list empty** and the Home page shows **every** course, including each one you add later, with nothing more to do.
+- Click **Save changes** (live in 1-2 minutes). Courses you delete are dropped from the list by themselves.
 
 ### The four exams
 
 Chandigarh Civil Services prepares students for **IAS** (UPSC Civil Services), **PCS** (Punjab Civil Services), **HPAS**
-(Himachal Pradesh Administrative Services) and **HCS** (Haryana Civil Services). The same four names are used for the course
-cards, the **Which exam are you preparing for?** list in every enquiry form (plus **Other**), the exam updates and their
-filter. Enquiries you received before this change keep the exam name they were saved with (for example UPSC CSE).
-Each of the four cards has a picture made for it: replace it with **Upload image** whenever you like, and edit its text or
-**price** (it says "Enquire for fees" until you do).
+(Himachal Pradesh Administrative Services) and **HCS** (Haryana Civil Services). The same four names are used for a
+course's exam, the **Which exam are you preparing for?** list in every enquiry form (plus **Other**), the exam updates and
+their filter, and the footer. Enquiries you received before this change keep the exam name they were saved with (for example
+UPSC CSE).
 
 ## Landing pages (campaign pages for ads)
 

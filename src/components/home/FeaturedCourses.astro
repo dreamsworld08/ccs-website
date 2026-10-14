@@ -11,7 +11,8 @@ const all = await getCourses();
 const picked = home.featured_course_ids
   .map((id) => all.find((c) => c.id === id))
   .filter((c) => c !== undefined);
-const featured = (picked.length ? picked : all).slice(0, 4);
+// however many were chosen, in that order; when none were, every course (so a course added later shows up by itself)
+const featured = picked.length ? picked : all;
 ---
 
 <section class="panel bg-white border border-line">

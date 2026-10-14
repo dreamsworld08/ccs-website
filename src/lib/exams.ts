@@ -18,6 +18,14 @@ export const EXAM_NAMES: Record<string, string> = {
   HCS: 'Haryana Civil Services (HCS)',
 };
 
+/** Short labels for tight places such as the footer: the exam, and who runs it. Each fits on one line. */
+export const EXAM_SHORT: Record<string, string> = {
+  IAS: 'IAS (UPSC)',
+  PCS: 'PCS (Punjab)',
+  HPAS: 'HPAS (Himachal)',
+  HCS: 'HCS (Haryana)',
+};
+
 /**
  * Names the website used before the four exams above. Enquiries already in the sheet carry them, and a backend that has not
  * been updated yet only knows them, so they stay valid on the receiving side. They map onto today's names.

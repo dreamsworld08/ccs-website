@@ -662,9 +662,10 @@ export const HOME_SECTIONS: { title: string; note?: string; fields: Field[] }[] 
     fields: [
       {
         key: 'featured_course_ids',
-        label: 'Courses shown on the Home page (up to four)',
+        label: 'Courses shown on the Home page',
         type: 'coursePick',
-        maxItems: 4,
+        maxItems: 24,
+        help: 'Add as many as you like and put them in the order you want. Leave the list empty to show every course (a course you add later then appears by itself).',
       },
     ],
   },

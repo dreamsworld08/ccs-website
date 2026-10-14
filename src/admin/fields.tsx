@@ -317,27 +317,81 @@ export function FieldInput({
 
     case 'coursePick': {
       const ids: string[] = Array.isArray(value) ? value : [];
-      const n = field.maxItems ?? 3;
+      const max = field.maxItems ?? 24;
       const courses = ctx.courses ?? [];
+      const known = new Set(courses.map((c) => c.id));
+      // a course can be shown once: picking one that is already in the list moves nothing and adds nothing
+      const update = (next: string[]) => set(field.key, [...new Set(next.filter(Boolean))]);
+      const move = (i: number, by: -1 | 1) => {
+        const next = [...ids];
+        const j = i + by;
+        if (j < 0 || j >= next.length) return;
+        [next[i], next[j]] = [next[j], next[i]];
+        update(next);
+      };
+      const notShown = courses.filter((c) => !ids.includes(c.id));
       return (
         <Wrap field={field} id={id}>
           <div class="rows">
-            {Array.from({ length: n }, (_, i) => (
+            {ids.map((cid, i) => (
+              <div class="row-inline" key={cid}>
+                <select
+                  aria-label={`Course ${i + 1} on the Home page`}
+                  value={cid}
+                  style="flex:1;min-width:0"
+                  onChange={(e) =>
+                    update(ids.map((x, j) => (j === i ? (e.target as HTMLSelectElement).value : x)))
+                  }
+                >
+                  {/* a course that was deleted since is still listed (by its id) so it can be seen and removed */}
+                  {!known.has(cid) && <option value={cid}>{cid} (no longer exists)</option>}
+                  {courses.map((c) => (
+                    <option value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  class="btn btn-sm"
+                  aria-label={`Move course ${i + 1} up`}
+                  disabled={i === 0}
+                  onClick={() => move(i, -1)}
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-sm"
+                  aria-label={`Move course ${i + 1} down`}
+                  disabled={i === ids.length - 1}
+                  onClick={() => move(i, 1)}
+                >
+                  ↓
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-sm"
+                  aria-label={`Remove course ${i + 1}`}
+                  onClick={() => update(ids.filter((_, j) => j !== i))}
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+            {ids.length < max && notShown.length > 0 && (
               <select
-                aria-label={`Featured course ${i + 1}`}
-                value={ids[i] ?? ''}
+                aria-label="Add a course to the Home page"
+                value=""
                 onChange={(e) => {
-                  const next = Array.from({ length: n }, (_, j) => ids[j] ?? '');
-                  next[i] = (e.target as HTMLSelectElement).value;
-                  set(field.key, next.filter(Boolean));
+                  const picked = (e.target as HTMLSelectElement).value;
+                  if (picked) update([...ids, picked]);
                 }}
               >
-                <option value="">— none —</option>
-                {courses.map((c) => (
+                <option value="">+ Add a course…</option>
+                {notShown.map((c) => (
                   <option value={c.id}>{c.name}</option>
                 ))}
               </select>
-            ))}
+            )}
           </div>
         </Wrap>
       );
