@@ -1040,6 +1040,20 @@ check(
   'leaving the setting out stores nothing (the site treats a missing value as Automatic)',
 );
 
+// the courses featured on the Home page: up to four (the four exams)
+check(
+  saveHome({ featured_course_ids: ['ias', 'pcs', 'hpas', 'hcs'] }).ok &&
+    stored('home/home.json').featured_course_ids.join() === 'ias,pcs,hpas,hcs',
+  'four featured courses can be saved (IAS, PCS, HPAS, HCS)',
+);
+check(
+  !saveHome({ featured_course_ids: ['ias', 'pcs', 'hpas', 'hcs', 'extra'] }).ok,
+  'but not five',
+);
+check(
+  saveHome({ featured_course_ids: ['ias'] }).ok && !saveHome({ featured_course_ids: ['../x'] }).ok,
+  'fewer than four is fine, and a course id must be a plain id',
+);
 // the YouTube videos section on the Home page
 const yt = {
   yt_show: true,
