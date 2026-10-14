@@ -1707,6 +1707,69 @@ console.log('\nYouTube videos on the Home page (card carousel)');
   await wide.close();
 }
 
+/* ============================================================ footer text */
+console.log('\nFooter: no text is cut off, with or without the "Reduce motion" setting');
+{
+  const measure = (page) =>
+    page.evaluate(() => {
+      const box = document.querySelector('.marquee');
+      const br = box.getBoundingClientRect();
+      const track = document.querySelector('.marquee-track');
+      const names = [...document.querySelectorAll('.marquee-set')][0].querySelectorAll(
+        ':scope > span > span:first-child',
+      );
+      const exams = [...document.querySelectorAll('footer a')].filter((a) =>
+        /^(IAS|PCS|HPAS|HCS) \(/.test(a.textContent.trim()),
+      );
+      return {
+        cut: [...names].filter((n) => {
+          const r = n.getBoundingClientRect();
+          return r.width && (r.right > br.right + 1 || r.left < br.left - 1);
+        }).length,
+        anim: getComputedStyle(track).animationName,
+        transform: getComputedStyle(track).transform,
+        examLinks: exams.length,
+        examLinesMax: Math.max(...exams.map((a) => Math.round(a.getBoundingClientRect().height))),
+        pageWider: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      };
+    });
+  for (const [mode, widths] of [
+    ['reduce', [320, 390, 768, 1280]],
+    ['no-preference', [390, 1280]],
+  ]) {
+    for (const w of widths) {
+      const page = await newPage(w, w < 700);
+      await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: mode }]);
+      await page.evaluateOnNewDocument(() => sessionStorage.setItem('ccs_popup_shown', '1'));
+      await open(page, '/');
+      await page.evaluate(() => document.querySelector('footer').scrollIntoView());
+      await sleep(300);
+      const a = await measure(page);
+      check(
+        a.examLinks === 4 && a.examLinesMax < 30 && !a.pageWider,
+        `the four exam links are one line each, and the page is not widened @${w}px (${mode})`,
+        JSON.stringify(a),
+      );
+      if (mode === 'reduce') {
+        check(
+          a.anim === 'none' && a.cut === 0,
+          `reduced motion: the course names wrap inside the footer, none is cut off @${w}px`,
+          JSON.stringify(a),
+        );
+      } else {
+        await sleep(1200);
+        const b = await measure(page);
+        check(
+          a.anim === 'marquee' && a.transform !== b.transform,
+          `normal motion: the course-name strip scrolls @${w}px`,
+          JSON.stringify({ anim: a.anim, t1: a.transform, t2: b.transform }),
+        );
+      }
+      await page.close();
+    }
+  }
+}
+
 /* ============================================================ right-click */
 console.log('\nRight-click is disabled on the public site');
 {
@@ -3060,6 +3123,7 @@ console.log(
     // 9. a backend that has not been updated ignores the chosen name and stores the file under its own: the record
     //    must follow the name the server reports, or the picture would be missing on the website
     {
+      await cleanProbe(); // nothing left over from the tests above
       const page = await newProbePage();
       let asked = '';
       await page.setRequestInterception(true);
@@ -3078,9 +3142,10 @@ console.log(
       await clickSave(page);
       await page.waitForFunction(() => !document.querySelector('.drawer'), { timeout: 30000 });
       const stored = await probeFiles();
-      const file = (await readdir(join(ROOT, 'src/content/courses'))).find((f) =>
+      const probeRecords = (await readdir(join(ROOT, 'src/content/courses'))).filter((f) =>
         f.startsWith('e2e-upload-probe'),
       );
+      const file = probeRecords.at(-1);
       const saved = file
         ? JSON.parse(await readFile(join(ROOT, 'src/content/courses', file), 'utf8'))
         : {};
@@ -3089,7 +3154,7 @@ console.log(
           stored[0] !== asked &&
           saved.thumbnail === `/uploads/courses/${stored[0]}`,
         'with a backend that picks its own file name, the saved record points at the name it really used',
-        `asked ${asked}, stored ${stored.join(',')}, thumbnail ${saved.thumbnail}`,
+        `asked ${asked}, stored ${stored.join(',')}, records ${probeRecords.join(',')}, thumbnail ${saved.thumbnail}`,
       );
       await page.close();
       await cleanProbe();
